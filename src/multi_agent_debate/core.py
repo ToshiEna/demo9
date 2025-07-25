@@ -1,3 +1,4 @@
+import asyncio
 import re
 from dataclasses import dataclass
 from typing import Dict, List
@@ -56,6 +57,10 @@ class DebateCallback:
         """Called when an agent provides a response"""
         pass
     
+    def on_agent_thinking(self, agent_id: str, round_num: int):
+        """Called when an agent starts thinking"""
+        pass
+    
     def on_debate_start(self, question: str):
         """Called when debate starts"""
         pass
@@ -78,10 +83,20 @@ class MathSolver(RoutedAgent):
         self._num_neighbors = num_neighbors
         self._history: List[LLMMessage] = []
         self._buffer: Dict[int, List[IntermediateSolverResponse]] = {}
+        # Create diverse system messages for different agents
+        agent_personalities = [
+            "You are a methodical assistant who loves to break down problems step by step. You approach math problems systematically and show all your work clearly.",
+            "You are a creative assistant who likes to find alternative approaches to math problems. You often think outside the box and consider multiple solution paths.",
+            "You are a detail-oriented assistant who focuses on precision and accuracy. You double-check your work and explain your reasoning thoroughly.",
+            "You are an intuitive assistant who can quickly identify patterns and shortcuts. You balance speed with accuracy in your mathematical reasoning."
+        ]
+        
+        personality = agent_personalities[ord(topic_type[-1]) - ord('A')] if topic_type.endswith(('A', 'B', 'C', 'D')) else agent_personalities[0]
+        
         self._system_messages = [
             SystemMessage(
                 content=(
-                    "You are a helpful assistant with expertise in mathematics and reasoning. "
+                    f"{personality} "
                     "Your task is to assist in solving a math reasoning problem by providing "
                     "a clear and detailed solution. Limit your output within 100 words, "
                     "and your final answer should be a single numerical number, "
@@ -96,6 +111,13 @@ class MathSolver(RoutedAgent):
 
     @message_handler
     async def handle_request(self, message: SolverRequest, ctx: MessageContext) -> None:
+        # Notify callback that agent is thinking
+        if self._callback:
+            self._callback.on_agent_thinking(self.id, self._round)
+        
+        # Simulate thinking time
+        await asyncio.sleep(2)
+        
         # Add the question to the memory.
         self._history.append(UserMessage(content=message.content, source="user"))
         # Make an inference using the model.
@@ -147,14 +169,18 @@ class MathSolver(RoutedAgent):
             if self._callback:
                 self._callback.on_round_complete(message.round)
             
+            # Add delay to simulate deliberation between rounds
+            await asyncio.sleep(1)
+            
             # Prepare the prompt for the next question.
             prompt = "These are the solutions to the problem from other agents:\n"
-            for resp in self._buffer[message.round]:
-                prompt += f"One agent solution: {resp.content}\n"
+            for i, resp in enumerate(self._buffer[message.round]):
+                prompt += f"Agent {i+1} solution: {resp.content}\n"
             prompt += (
                 "Using the solutions from other agents as additional information, "
                 "can you provide your answer to the math problem? "
                 f"The original math problem is {message.question}. "
+                "Consider if there are different approaches shown by other agents and explain your reasoning. "
                 "Your final answer should be a single numerical number, "
                 "in the form of {{answer}}, at the end of your response."
             )
