@@ -46,6 +46,16 @@ class WebSocketCallback(DebateCallback):
         debate_history.append(message)
         asyncio.create_task(broadcast_message(message))
     
+    def on_agent_thinking(self, agent_id: str, round_num: int):
+        message = {
+            "type": "agent_thinking",
+            "agent_id": str(agent_id),
+            "round": round_num,
+            "timestamp": datetime.now().isoformat()
+        }
+        debate_history.append(message)
+        asyncio.create_task(broadcast_message(message))
+    
     def on_debate_start(self, question: str):
         message = {
             "type": "debate_start",
