@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Agent Debate Demo</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🤖 Multi-Agent Debate Demo</h1>
+            <p>マルチエージェント議論システム - 数学問題を複数のAIエージェントが協力して解決</p>
+        </header>
+
+        <div class="main-content">
+            <!-- 質問入力セクション -->
+            <div class="question-section">
+                <h2>📝 数学問題を入力</h2>
+                <div class="input-group">
+                    <textarea id="questionInput" placeholder="例: 太郎くんは4月に友達48人にクリップを売りました。5月には4月の半分の数のクリップを売りました。太郎くんは4月と5月で合計何個のクリップを売ったでしょうか？" rows="3"></textarea>
+                    <button id="solveButton" onclick="startDebate()">🚀 議論開始</button>
+                </div>
+                <div class="example-questions">
+                    <h3>サンプル問題:</h3>
+                    <button class="example-btn" onclick="setExample(this)" data-question="太郎くんは4月に友達48人にクリップを売りました。5月には4月の半分の数のクリップを売りました。太郎くんは4月と5月で合計何個のクリップを売ったでしょうか？">
+                        クリップ販売問題
+                    </button>
+                    <button class="example-btn" onclick="setExample(this)" data-question="ある学校には生徒が360人います。そのうち3分の2が女子生徒です。女子生徒は何人ですか？">
+                        生徒数問題
+                    </button>
+                </div>
+            </div>
+
+            <!-- 状態表示 -->
+            <div class="status-section">
+                <div id="status" class="status">待機中...</div>
+            </div>
+
+            <!-- 議論可視化セクション -->
+            <div class="debate-section">
+                <h2>🎭 議論の進行</h2>
+                
+                <!-- 質問表示 -->
+                <div id="currentQuestion" class="current-question" style="display: none;">
+                    <h3>📋 解決中の問題:</h3>
+                    <p id="questionText"></p>
+                </div>
+
+                <!-- エージェント議論エリア -->
+                <div class="agents-container">
+                    <div class="agent-card" id="agentA">
+                        <h3>🤖 Agent A</h3>
+                        <div class="agent-responses"></div>
+                    </div>
+                    <div class="agent-card" id="agentB">
+                        <h3>🤖 Agent B</h3>
+                        <div class="agent-responses"></div>
+                    </div>
+                    <div class="agent-card" id="agentC">
+                        <h3>🤖 Agent C</h3>
+                        <div class="agent-responses"></div>
+                    </div>
+                    <div class="agent-card" id="agentD">
+                        <h3>🤖 Agent D</h3>
+                        <div class="agent-responses"></div>
+                    </div>
+                </div>
+
+                <!-- ラウンド進行表示 -->
+                <div class="rounds-container">
+                    <h3>📊 ラウンド進行</h3>
+                    <div id="roundsProgress"></div>
+                </div>
+
+                <!-- 最終結果 -->
+                <div id="finalResult" class="final-result" style="display: none;">
+                    <h3>🎯 最終回答</h3>
+                    <div id="finalAnswer"></div>
+                </div>
+            </div>
+
+            <!-- 議論ログ -->
+            <div class="log-section">
+                <h2>📄 議論ログ</h2>
+                <div id="debateLog" class="debate-log"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>
