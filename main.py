@@ -124,13 +124,24 @@ async def websocket_endpoint(websocket: WebSocket):
 async def solve_problem(request: QuestionRequest):
     """数学問題を解決する"""
     try:
-        openai_api_key = os.getenv("OPENAI_API_KEY")
-        if not openai_api_key:
-            return {"error": "OpenAI API key not configured"}
+        azure_api_key = os.getenv("AZURE_OPENAI_API_KEY")
+        azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+        azure_deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
+        
+        if not azure_api_key:
+            return {"error": "Azure OpenAI API key not configured"}
+        if not azure_endpoint:
+            return {"error": "Azure OpenAI endpoint not configured"}
+        if not azure_deployment:
+            return {"error": "Azure OpenAI deployment name not configured"}
         
         # Create debate manager with callback
         callback = WebSocketCallback()
-        manager = DebateManager(openai_api_key=openai_api_key)
+        manager = DebateManager(
+            azure_api_key=azure_api_key,
+            azure_endpoint=azure_endpoint,
+            azure_deployment=azure_deployment
+        )
         manager.set_callback(callback)
         
         # Run debate in background
