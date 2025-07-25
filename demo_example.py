@@ -37,10 +37,21 @@ async def run_demo():
     # 環境変数の読み込み
     load_dotenv()
     
-    openai_api_key = os.getenv("OPENAI_API_KEY")
-    if not openai_api_key:
-        print("❌ エラー: OpenAI APIキーが設定されていません。")
-        print("   .envファイルを作成し、OPENAI_API_KEY=your_api_key_here を設定してください。")
+    azure_api_key = os.getenv("AZURE_OPENAI_API_KEY")
+    azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+    azure_deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
+    
+    if not azure_api_key:
+        print("❌ エラー: Azure OpenAI APIキーが設定されていません。")
+        print("   .envファイルを作成し、AZURE_OPENAI_API_KEY=your_api_key_here を設定してください。")
+        return
+    if not azure_endpoint:
+        print("❌ エラー: Azure OpenAI エンドポイントが設定されていません。")
+        print("   .envファイルを作成し、AZURE_OPENAI_ENDPOINT=your_endpoint_here を設定してください。")
+        return
+    if not azure_deployment:
+        print("❌ エラー: Azure OpenAI デプロイメント名が設定されていません。")
+        print("   .envファイルを作成し、AZURE_OPENAI_DEPLOYMENT_NAME=your_deployment_name_here を設定してください。")
         return
     
     # 解決する問題
@@ -57,7 +68,9 @@ async def run_demo():
     # 議論システムの初期化と実行
     try:
         manager = DebateManager(
-            openai_api_key=openai_api_key,
+            azure_api_key=azure_api_key,
+            azure_endpoint=azure_endpoint,
+            azure_deployment=azure_deployment,
             model_name="gpt-4o-mini",  # より高性能なモデルに変更可能
             num_solvers=4,
             max_rounds=3
@@ -69,7 +82,7 @@ async def run_demo():
         
     except Exception as e:
         print(f"❌ エラーが発生しました: {e}")
-        print("OpenAI APIキーが有効か、APIの使用量制限に達していないかを確認してください。")
+        print("Azure OpenAI APIキーが有効か、APIの使用量制限に達していないかを確認してください。")
 
 def main():
     """メイン関数"""

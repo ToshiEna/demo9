@@ -1,14 +1,17 @@
 import asyncio
 from typing import List, Optional
 from autogen_core import SingleThreadedAgentRuntime, TypeSubscription, DefaultTopicId
-from autogen_ext.models.openai import OpenAIChatCompletionClient
+from autogen_ext.models.openai import AzureOpenAIChatCompletionClient
 from .core import MathSolver, MathAggregator, Question, DebateCallback
 
 
 class DebateManager:
-    def __init__(self, openai_api_key: str, model_name: str = "gpt-4o-mini", num_solvers: int = 4, max_rounds: int = 3):
-        self.openai_api_key = openai_api_key
+    def __init__(self, azure_api_key: str, azure_endpoint: str, azure_deployment: str, model_name: str = "gpt-4o-mini", api_version: str = "2024-06-01", num_solvers: int = 4, max_rounds: int = 3):
+        self.azure_api_key = azure_api_key
+        self.azure_endpoint = azure_endpoint
+        self.azure_deployment = azure_deployment
         self.model_name = model_name
+        self.api_version = api_version
         self.num_solvers = num_solvers
         self.max_rounds = max_rounds
         self.runtime = None
@@ -22,9 +25,12 @@ class DebateManager:
     async def initialize(self):
         """Initialize the runtime and agents"""
         self.runtime = SingleThreadedAgentRuntime()
-        self.model_client = OpenAIChatCompletionClient(
+        self.model_client = AzureOpenAIChatCompletionClient(
             model=self.model_name,
-            api_key=self.openai_api_key
+            azure_endpoint=self.azure_endpoint,
+            azure_deployment=self.azure_deployment,
+            api_version=self.api_version,
+            api_key=self.azure_api_key
         )
         
         # Register solver agents

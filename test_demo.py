@@ -117,8 +117,11 @@ def main():
     print("\n" + "=" * 60)
     if success:
         print("🎉 全てのテストが成功しました!")
-        print("\n次のステップ:")
-        print("1. .envファイルにOpenAI APIキーを設定")
+        print("   次のステップ:")
+        print("1. .envファイルにAzure OpenAI APIキーを設定")
+        print("   AZURE_OPENAI_API_KEY=your_api_key_here")
+        print("   AZURE_OPENAI_ENDPOINT=your_endpoint_here")
+        print("   AZURE_OPENAI_DEPLOYMENT_NAME=your_deployment_name_here")
         print("2. python main.py でサーバー起動")
         print("3. http://localhost:8000 にアクセス")
     else:
