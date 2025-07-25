@@ -37,7 +37,7 @@ class WebSocketCallback(DebateCallback):
     def on_agent_response(self, agent_id: str, round_num: int, content: str, answer: str):
         message = {
             "type": "agent_response",
-            "agent_id": agent_id,
+            "agent_id": str(agent_id),  # Convert AgentId to string for JSON serialization
             "round": round_num,
             "content": content,
             "answer": answer,
