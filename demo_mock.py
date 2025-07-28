@@ -79,24 +79,37 @@ async def run_mock_debate(question: str):
         })
         
         # Simulate different rounds
-        agents = ["MathSolverA", "MathSolverB", "MathSolverC", "MathSolverD"]
+        agents = [
+            {"id": "ExpertRecruiter", "name": "Expert Recruiter (専門家採用担当者)"},
+            {"id": "GeometryExpert", "name": "Geometry Expert (幾何学専門家)"},
+            {"id": "AlgebraExpert", "name": "Algebra Expert (代数学専門家)"},
+            {"id": "Evaluator", "name": "Evaluator (評価者)"}
+        ]
         
         # Mock responses for different types of questions
         if "クリップ" in question:
             mock_answers = ["72", "72", "72", "72"]
             mock_contents = [
-                "4月に48個、5月に24個（48÷2）なので、合計で48+24=72個です。",
-                "4月48個、5月はその半分で24個、よって48+24=72個になります。",
-                "まず4月分48個、次に5月分は48÷2=24個、足すと72個です。",
-                "計算すると：4月48個 + 5月24個 = 72個が答えです。"
+                "この問題は算数の基本的な計算問題です。4月48個、5月24個の合計を求めます。",
+                "幾何学的には関係ありませんが、数の配列として考えると48+24=72個です。",
+                "代数的に表現すると、x=48, y=x/2=24, 答え=x+y=72となります。",
+                "各専門家の回答を検証します。計算は正確で、答えは72個で一致しています。"
+            ]
+        elif "正方形" in question and "面積" in question:
+            mock_answers = ["100", "100", "100", "100"]
+            mock_contents = [
+                "この問題は幾何学と代数学の複合問題です。正方形の性質と面積計算が必要です。",
+                "面積36から一辺6cm、枠2cm加えて全体10cm、面積100cm²です。",
+                "代数的に：√36=6, (6+2×2)²=10²=100平方センチメートルです。",
+                "計算過程を検証：36→6cm→10cm→100cm²。全て正確です。"
             ]
         elif "時間" in question and "倍" in question:
-            mock_answers = ["3", "4", "3", "3"]
+            mock_answers = ["4", "4", "4", "4"]
             mock_contents = [
-                "通常1時間の準備時間が15分になるので、4倍の速度が必要です。",
-                "60分の準備を15分でやるには、60÷15=4倍の速度です。",
-                "準備時間が1/4になったので、4倍速く準備する必要があります。",
-                "15分で1時間分の準備をするには4倍の速度が必要です。"
+                "時間配分の問題です。通常60分の準備を15分で行う計算が必要です。",
+                "幾何学的時間配置として考えると、60分→15分は1/4の時間です。",
+                "代数的に：60÷15=4倍の速度が必要という計算になります。",
+                "各専門家の分析は正確です。4倍の速度で準備する必要があります。"
             ]
         elif "パーティー" in question:
             mock_answers = ["12", "6", "0", "8"]
@@ -109,10 +122,10 @@ async def run_mock_debate(question: str):
         else:
             mock_answers = ["240", "240", "240", "240"]
             mock_contents = [
-                "360人の3分の2は、360 × 2/3 = 240人です。",
-                "3分の2を計算すると、360 ÷ 3 × 2 = 240人になります。",
-                "全体の2/3が女子なので、360 × 0.667 ≈ 240人です。",
-                "360を3で割って120、それを2倍して240人が女子生徒です。"
+                "この問題は分数計算です。全体の3分の2を求める基本的な割合問題です。",
+                "幾何学的配置として考えても、360の2/3は240人となります。",
+                "代数的表現：360 × (2/3) = 360 × 0.667 = 240人です。",
+                "各専門家の計算を確認。360×2÷3=240人で一致しています。"
             ]
         
         for round_num in range(3):
@@ -121,7 +134,7 @@ async def run_mock_debate(question: str):
                 await asyncio.sleep(0.5)
                 await broadcast_message({
                     "type": "agent_thinking",
-                    "agent_id": agent,
+                    "agent_id": agent["id"],
                     "round": round_num,
                     "timestamp": datetime.now().isoformat()
                 })
@@ -131,7 +144,7 @@ async def run_mock_debate(question: str):
                 await asyncio.sleep(2)  # Simulate thinking time
                 await broadcast_message({
                     "type": "agent_response",
-                    "agent_id": agent,
+                    "agent_id": agent["id"],
                     "round": round_num,
                     "content": mock_contents[i],
                     "answer": mock_answers[i],
