@@ -44,6 +44,21 @@ function initWebSocket() {
     };
 }
 
+// Get friendly agent name for display
+function getFriendlyAgentName(agentId) {
+    const id = agentId.toLowerCase();
+    if (id.includes('expertrecruiter')) {
+        return 'Expert Recruiter (専門家採用担当者)';
+    } else if (id.includes('geometryexpert')) {
+        return 'Geometry Expert (幾何学専門家)';
+    } else if (id.includes('algebraexpert')) {
+        return 'Algebra Expert (代数学専門家)';
+    } else if (id.includes('evaluator')) {
+        return 'Evaluator (評価者)';
+    }
+    return agentId; // fallback to original ID
+}
+
 // Handle incoming WebSocket messages
 function handleMessage(message) {
     switch (message.type) {
@@ -79,7 +94,7 @@ function updateStatus(type, message) {
 
 // Handle debate start
 function handleDebateStart(message) {
-    updateStatus('running', '議論実行中...');
+    updateStatus('running', '協調推論実行中...');
     questionText.textContent = message.question;
     currentQuestion.style.display = 'block';
     finalResult.style.display = 'none';
@@ -95,13 +110,24 @@ function handleDebateStart(message) {
     });
     
     solveButton.disabled = true;
-    solveButton.textContent = '議論実行中...';
+    solveButton.textContent = '協調推論実行中...';
 }
 
 // Handle agent thinking
 function handleAgentThinking(message) {
     const agentId = message.agent_id.toLowerCase();
-    const agentElement = document.getElementById(`agent${agentId.slice(-1)}`);
+    let agentElement = null;
+    
+    // Map agent IDs to HTML element IDs
+    if (agentId.includes('expertrecruiter')) {
+        agentElement = document.getElementById('agentExpertRecruiter');
+    } else if (agentId.includes('geometryexpert')) {
+        agentElement = document.getElementById('agentGeometryExpert');
+    } else if (agentId.includes('algebraexpert')) {
+        agentElement = document.getElementById('agentAlgebraExpert');
+    } else if (agentId.includes('evaluator')) {
+        agentElement = document.getElementById('agentEvaluator');
+    }
     
     if (agentElement) {
         setAgentState(agentElement, 'thinking');
@@ -111,7 +137,18 @@ function handleAgentThinking(message) {
 // Handle agent response
 function handleAgentResponse(message) {
     const agentId = message.agent_id.toLowerCase();
-    const agentElement = document.getElementById(`agent${agentId.slice(-1)}`);
+    let agentElement = null;
+    
+    // Map agent IDs to HTML element IDs
+    if (agentId.includes('expertrecruiter')) {
+        agentElement = document.getElementById('agentExpertRecruiter');
+    } else if (agentId.includes('geometryexpert')) {
+        agentElement = document.getElementById('agentGeometryExpert');
+    } else if (agentId.includes('algebraexpert')) {
+        agentElement = document.getElementById('agentAlgebraExpert');
+    } else if (agentId.includes('evaluator')) {
+        agentElement = document.getElementById('agentEvaluator');
+    }
     
     if (agentElement) {
         // Set agent to active state
@@ -157,7 +194,7 @@ function handleRoundComplete(message) {
 
 // Handle debate end
 function handleDebateEnd(message) {
-    updateStatus('completed', '議論完了！');
+    updateStatus('completed', '協調推論完了！');
     finalAnswer.textContent = message.final_answer;
     finalResult.style.display = 'block';
     
@@ -168,14 +205,14 @@ function handleDebateEnd(message) {
     
     // Re-enable solve button
     solveButton.disabled = false;
-    solveButton.textContent = '🚀 議論開始';
+    solveButton.textContent = '🚀 協調推論開始';
 }
 
 // Handle errors
 function handleError(message) {
     updateStatus('error', `エラー: ${message.message}`);
     solveButton.disabled = false;
-    solveButton.textContent = '🚀 議論開始';
+    solveButton.textContent = '🚀 協調推論開始';
     
     // Reset all agents to waiting state
     document.querySelectorAll('.agent-card').forEach(card => {
@@ -264,19 +301,19 @@ function addLogEntry(message) {
     let content = '';
     switch (message.type) {
         case 'debate_start':
-            content = `議論開始: ${message.question}`;
+            content = `協調推論開始: ${message.question}`;
             break;
         case 'agent_thinking':
-            content = `${message.agent_id} が考え中... (ラウンド${message.round})`;
+            content = `${getFriendlyAgentName(message.agent_id)} が分析中... (ラウンド${message.round})`;
             break;
         case 'agent_response':
-            content = `${message.agent_id} (ラウンド${message.round}): ${message.answer}`;
+            content = `${getFriendlyAgentName(message.agent_id)} (ラウンド${message.round}): ${message.answer}`;
             break;
         case 'round_complete':
             content = `ラウンド ${message.round} 完了`;
             break;
         case 'debate_end':
-            content = `議論終了 - 最終回答: ${message.final_answer}`;
+            content = `協調推論終了 - 最終回答: ${message.final_answer}`;
             break;
         case 'error':
             content = `エラー: ${message.message}`;

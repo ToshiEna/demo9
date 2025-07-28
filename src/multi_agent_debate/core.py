@@ -76,38 +76,65 @@ class DebateCallback:
 
 @default_subscription
 class MathSolver(RoutedAgent):
-    def __init__(self, model_client: ChatCompletionClient, topic_type: str, num_neighbors: int, max_round: int, callback: DebateCallback = None) -> None:
-        super().__init__("A debator.")
+    def __init__(self, model_client: ChatCompletionClient, topic_type: str, role_type: str, num_neighbors: int, max_round: int, callback: DebateCallback = None) -> None:
+        super().__init__(f"A {role_type} agent.")
         self._topic_type = topic_type
+        self._role_type = role_type
         self._model_client = model_client
         self._num_neighbors = num_neighbors
         self._history: List[LLMMessage] = []
         self._buffer: Dict[int, List[IntermediateSolverResponse]] = {}
-        # Create diverse system messages for different agents
-        agent_personalities = [
-            "You are a methodical assistant who loves to break down problems step by step. You approach math problems systematically and show all your work clearly.",
-            "You are a creative assistant who likes to find alternative approaches to math problems. You often think outside the box and consider multiple solution paths.",
-            "You are a detail-oriented assistant who focuses on precision and accuracy. You double-check your work and explain your reasoning thoroughly.",
-            "You are an intuitive assistant who can quickly identify patterns and shortcuts. You balance speed with accuracy in your mathematical reasoning."
-        ]
         
-        personality = agent_personalities[ord(topic_type[-1]) - ord('A')] if topic_type.endswith(('A', 'B', 'C', 'D')) else agent_personalities[0]
+        # Define specialized roles based on M500 research framework
+        role_definitions = {
+            "ExpertRecruiter": {
+                "name": "Expert Recruiter (専門家採用担当者)",
+                "personality": "You are an Expert Recruiter who analyzes mathematical problems and coordinates the problem-solving process. You identify what types of mathematical expertise are needed and guide the collaborative reasoning process.",
+                "task": "Analyze the given problem, identify the mathematical domains involved (geometry, algebra, arithmetic, etc.), and provide an initial solution approach while coordinating with domain experts."
+            },
+            "GeometryExpert": {
+                "name": "Geometry Expert (幾何学専門家)", 
+                "personality": "You are a Geometry Expert specialized in spatial reasoning, geometric shapes, measurements, and geometric problem solving. You excel at visualizing geometric relationships and applying geometric principles.",
+                "task": "Focus on geometric aspects of the problem. Apply geometric principles, spatial reasoning, and measurement concepts to provide solutions."
+            },
+            "AlgebraExpert": {
+                "name": "Algebra Expert (代数学専門家)",
+                "personality": "You are an Algebra Expert specialized in algebraic thinking, equations, variables, and mathematical relationships. You excel at pattern recognition and algebraic manipulation.",
+                "task": "Focus on algebraic aspects of the problem. Apply algebraic thinking, equation solving, and mathematical relationship analysis to provide solutions."
+            },
+            "Evaluator": {
+                "name": "Evaluator (評価者)",
+                "personality": "You are an Evaluator who verifies mathematical solutions and provides critical feedback. You check the accuracy and reasoning of solutions provided by other experts.",
+                "task": "Evaluate the solutions provided by other experts, check for mathematical accuracy, identify potential errors, and provide constructive feedback to improve the solution quality."
+            }
+        }
+        
+        role_config = role_definitions.get(role_type, role_definitions["ExpertRecruiter"])
+        personality = role_config["personality"]
+        self._role_name = role_config["name"]
+        self._role_task = role_config["task"]
         
         self._system_messages = [
             SystemMessage(
                 content=(
                     f"{personality} "
-                    "Your task is to assist in solving a math reasoning problem by providing "
-                    "a clear and detailed solution. Limit your output within 100 words, "
-                    "and your final answer should be a single numerical number, "
+                    f"{self._role_task} "
+                    "Provide a clear and detailed solution within 150 words. "
+                    "Your final answer should be a single numerical number, "
                     "in the form of {{answer}}, at the end of your response. "
-                    "For example, 'The answer is {{42}}.'"
+                    "For example, 'The answer is {{42}}.' "
+                    "When working with other experts, consider their domain expertise and build upon their insights."
                 )
             )
         ]
         self._round = 0
         self._max_round = max_round
         self._callback = callback
+
+    @property
+    def role_name(self) -> str:
+        """Get the human-readable role name"""
+        return self._role_name
 
     @message_handler
     async def handle_request(self, message: SolverRequest, ctx: MessageContext) -> None:
@@ -126,7 +153,7 @@ class MathSolver(RoutedAgent):
         # Add the response to the memory.
         self._history.append(AssistantMessage(content=model_result.content, source=self.metadata["type"]))
         
-        print(f"{'-'*80}\nSolver {self.id} round {self._round}:\n{model_result.content}")
+        print(f"{'-'*80}\n{self._role_name} ({self.id}) round {self._round}:\n{model_result.content}")
         
         # Extract the answer from the response.
         match = re.search(r"\{\{(\-?\d+(\.\d+)?)\}\}", model_result.content)
@@ -162,7 +189,7 @@ class MathSolver(RoutedAgent):
         # Check if all neighbors have responded.
         if len(self._buffer[message.round]) == self._num_neighbors:
             print(
-                f"{'-'*80}\nSolver {self.id} round {message.round}:\nReceived all responses from {self._num_neighbors} neighbors."
+                f"{'-'*80}\n{self._role_name} ({self.id}) round {message.round}:\nReceived all responses from {self._num_neighbors} neighbors."
             )
             
             # Notify callback about round completion
@@ -173,14 +200,14 @@ class MathSolver(RoutedAgent):
             await asyncio.sleep(1)
             
             # Prepare the prompt for the next question.
-            prompt = "These are the solutions to the problem from other agents:\n"
+            prompt = f"As a {self._role_name}, review these solutions from other experts:\n"
             for i, resp in enumerate(self._buffer[message.round]):
-                prompt += f"Agent {i+1} solution: {resp.content}\n"
+                prompt += f"Expert {i+1} solution: {resp.content}\n"
             prompt += (
-                "Using the solutions from other agents as additional information, "
-                "can you provide your answer to the math problem? "
-                f"The original math problem is {message.question}. "
-                "Consider if there are different approaches shown by other agents and explain your reasoning. "
+                f"Based on your expertise as a {self._role_name} and the solutions from other experts, "
+                f"provide your analysis and solution to the problem. {self._role_task} "
+                f"The original problem is: {message.question}. "
+                "Consider the approaches shown by other experts and explain your reasoning from your specialized perspective. "
                 "Your final answer should be a single numerical number, "
                 "in the form of {{answer}}, at the end of your response."
             )
