@@ -217,6 +217,13 @@ header p {
     background: linear-gradient(135deg, #f0fff4 0%, #c6f6d5 100%);
 }
 
+.agent-card.assigned {
+    border-color: #9f7aea;
+    box-shadow: 0 0 15px rgba(159, 122, 234, 0.4);
+    background: linear-gradient(135deg, #faf5ff 0%, #e9d5ff 100%);
+    transform: scale(1.05);
+}
+
 .agent-card h3 {
     color: #4a5568;
     margin-bottom: 10px;

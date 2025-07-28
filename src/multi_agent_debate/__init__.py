@@ -1,11 +1,20 @@
-from .core import MathSolver, MathAggregator, Question, Answer, DebateCallback
+from .core import (
+    ExpertRecruiter, GeometryExpert, AlgebraExpert, Evaluator, MathAggregator,
+    Question, Answer, ExpertAssignment, ExpertSolution, EvaluationRequest, DebateCallback
+)
 from .manager import DebateManager
 
 __all__ = [
-    "MathSolver",
-    "MathAggregator", 
+    "ExpertRecruiter",
+    "GeometryExpert", 
+    "AlgebraExpert",
+    "Evaluator",
+    "MathAggregator",
     "Question",
     "Answer",
+    "ExpertAssignment",
+    "ExpertSolution", 
+    "EvaluationRequest",
     "DebateCallback",
     "DebateManager"
 ]

@@ -84,6 +84,24 @@ class WebSocketCallback(DebateCallback):
         debate_history.append(message)
         asyncio.create_task(broadcast_message(message))
 
+    def on_expert_assignment(self, assigned_experts: List[str], reasoning: str):
+        message = {
+            "type": "expert_assignment",
+            "assigned_experts": assigned_experts,
+            "reasoning": reasoning,
+            "timestamp": datetime.now().isoformat()
+        }
+        debate_history.append(message)
+        asyncio.create_task(broadcast_message(message))
+    
+    def on_evaluation_start(self):
+        message = {
+            "type": "evaluation_start",
+            "timestamp": datetime.now().isoformat()
+        }
+        debate_history.append(message)
+        asyncio.create_task(broadcast_message(message))
+
 
 async def broadcast_message(message: Dict):
     """全ての接続されたクライアントにメッセージをブロードキャスト"""

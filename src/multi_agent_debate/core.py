@@ -1,5 +1,8 @@
 import asyncio
 import re
+import urllib.parse
+import urllib.request
+import json
 from dataclasses import dataclass
 from typing import Dict, List
 
@@ -51,7 +54,30 @@ class FinalSolverResponse:
     answer: str
 
 
-# Callback interface for real-time updates
+@dataclass
+class ExpertAssignment:
+    """Message from Expert Recruiter to assign problem to specific experts"""
+    question: str
+    assigned_experts: List[str]  # List of expert names to solve the problem
+    reasoning: str
+
+
+@dataclass 
+class ExpertSolution:
+    """Solution from an assigned expert"""
+    expert_name: str
+    question: str
+    solution: str
+    answer: str
+
+
+@dataclass
+class EvaluationRequest:
+    """Request for Evaluator to validate solutions"""
+    question: str
+    solutions: List[ExpertSolution]
+
+
 class DebateCallback:
     def on_agent_response(self, agent_id: str, round_num: int, content: str, answer: str):
         """Called when an agent provides a response"""
@@ -73,156 +99,376 @@ class DebateCallback:
         """Called when a round is complete"""
         pass
 
+    def on_expert_assignment(self, assigned_experts: List[str], reasoning: str):
+        """Called when Expert Recruiter assigns experts"""
+        pass
+    
+    def on_evaluation_start(self):
+        """Called when Evaluator starts validation"""
+        pass
+
+
+async def simple_search(query: str, max_results: int = 3) -> str:
+    """
+    Simple web search function (mock implementation for now)
+    In a real implementation, you would use a search API like Google Custom Search
+    """
+    # For now, return a mock search result that helps with mathematical problem categorization
+    mock_results = {
+        "geometry": [
+            "Geometry problems often involve shapes, areas, perimeters, angles, and spatial relationships",
+            "Key concepts: area calculation, volume, coordinate geometry, trigonometry",
+            "Common types: area and perimeter problems, 3D geometry, coordinate plane problems"
+        ],
+        "algebra": [
+            "Algebra problems involve equations, variables, mathematical relationships and patterns",
+            "Key concepts: linear equations, systems of equations, polynomial operations, functions",
+            "Common types: word problems with unknowns, equation solving, pattern recognition"
+        ],
+        "arithmetic": [
+            "Arithmetic problems involve basic operations, fractions, percentages, and number relationships",
+            "Key concepts: addition, subtraction, multiplication, division, ratios, proportions",
+            "Common types: word problems with basic math, percentage calculations, ratio problems"
+        ]
+    }
+    
+    # Simple keyword matching to return relevant information
+    query_lower = query.lower()
+    results = []
+    
+    for category, info_list in mock_results.items():
+        if any(keyword in query_lower for keyword in [category, "面積", "周囲", "図形", "正方形", "円", "三角形", "angle", "area", "perimeter", "shape"]):
+            if category == "geometry":
+                results.extend(info_list)
+        elif any(keyword in query_lower for keyword in ["方程式", "未知数", "変数", "equation", "variable", "unknown", "solve for"]):
+            if category == "algebra":
+                results.extend(info_list)
+        elif any(keyword in query_lower for keyword in ["計算", "合計", "total", "sum", "multiply", "divide", "percent"]):
+            if category == "arithmetic":
+                results.extend(info_list)
+    
+    if not results:
+        results = ["This appears to be a general mathematical problem that may require multiple mathematical domains."]
+    
+    return "Search results:\n" + "\n".join(f"- {result}" for result in results[:max_results])
+
 
 @default_subscription
-class MathSolver(RoutedAgent):
-    def __init__(self, model_client: ChatCompletionClient, topic_type: str, role_type: str, num_neighbors: int, max_round: int, callback: DebateCallback = None) -> None:
-        super().__init__(f"A {role_type} agent.")
-        self._topic_type = topic_type
-        self._role_type = role_type
+class ExpertRecruiter(RoutedAgent):
+    """Expert Recruiter that analyzes problems and assigns them to appropriate experts"""
+    
+    def __init__(self, model_client: ChatCompletionClient, callback: DebateCallback = None) -> None:
+        super().__init__("Expert Recruiter")
         self._model_client = model_client
-        self._num_neighbors = num_neighbors
-        self._history: List[LLMMessage] = []
-        self._buffer: Dict[int, List[IntermediateSolverResponse]] = {}
-        
-        # Define specialized roles based on M500 research framework
-        role_definitions = {
-            "ExpertRecruiter": {
-                "name": "Expert Recruiter (専門家採用担当者)",
-                "personality": "You are an Expert Recruiter who analyzes mathematical problems and coordinates the problem-solving process. You identify what types of mathematical expertise are needed and guide the collaborative reasoning process.",
-                "task": "Analyze the given problem, identify the mathematical domains involved (geometry, algebra, arithmetic, etc.), and provide an initial solution approach while coordinating with domain experts."
-            },
-            "GeometryExpert": {
-                "name": "Geometry Expert (幾何学専門家)", 
-                "personality": "You are a Geometry Expert specialized in spatial reasoning, geometric shapes, measurements, and geometric problem solving. You excel at visualizing geometric relationships and applying geometric principles.",
-                "task": "Focus on geometric aspects of the problem. Apply geometric principles, spatial reasoning, and measurement concepts to provide solutions."
-            },
-            "AlgebraExpert": {
-                "name": "Algebra Expert (代数学専門家)",
-                "personality": "You are an Algebra Expert specialized in algebraic thinking, equations, variables, and mathematical relationships. You excel at pattern recognition and algebraic manipulation.",
-                "task": "Focus on algebraic aspects of the problem. Apply algebraic thinking, equation solving, and mathematical relationship analysis to provide solutions."
-            },
-            "Evaluator": {
-                "name": "Evaluator (評価者)",
-                "personality": "You are an Evaluator who verifies mathematical solutions and provides critical feedback. You check the accuracy and reasoning of solutions provided by other experts.",
-                "task": "Evaluate the solutions provided by other experts, check for mathematical accuracy, identify potential errors, and provide constructive feedback to improve the solution quality."
-            }
-        }
-        
-        role_config = role_definitions.get(role_type, role_definitions["ExpertRecruiter"])
-        personality = role_config["personality"]
-        self._role_name = role_config["name"]
-        self._role_task = role_config["task"]
+        self._callback = callback
         
         self._system_messages = [
             SystemMessage(
                 content=(
-                    f"{personality} "
-                    f"{self._role_task} "
-                    "Provide a clear and detailed solution within 150 words. "
-                    "Your final answer should be a single numerical number, "
-                    "in the form of {{answer}}, at the end of your response. "
-                    "For example, 'The answer is {{42}}.' "
-                    "When working with other experts, consider their domain expertise and build upon their insights."
+                    "You are an Expert Recruiter (専門家採用担当者) who analyzes mathematical problems and coordinates the problem-solving process. "
+                    "Your job is to:\n"
+                    "1. Analyze the given mathematical problem\n"
+                    "2. Identify what types of mathematical expertise are needed (geometry, algebra, both, or general arithmetic)\n"
+                    "3. Decide which expert(s) should solve the problem: GeometryExpert, AlgebraExpert, or both\n"
+                    "4. Provide reasoning for your decision\n\n"
+                    "Guidelines:\n"
+                    "- For problems involving shapes, areas, perimeters, angles, spatial relationships: assign GeometryExpert\n"
+                    "- For problems involving equations, unknowns, variables, algebraic relationships: assign AlgebraExpert\n"
+                    "- For complex problems requiring multiple domains: assign both experts\n"
+                    "- For simple arithmetic: assign AlgebraExpert as default\n\n"
+                    "Respond with your analysis and assignment decision. Format your response as:\n"
+                    "ANALYSIS: [your analysis of the problem]\n"
+                    "ASSIGNED_EXPERTS: [GeometryExpert|AlgebraExpert|both]\n"
+                    "REASONING: [why you chose these experts]"
                 )
             )
         ]
-        self._round = 0
-        self._max_round = max_round
-        self._callback = callback
-
-    @property
-    def role_name(self) -> str:
-        """Get the human-readable role name"""
-        return self._role_name
 
     @message_handler
-    async def handle_request(self, message: SolverRequest, ctx: MessageContext) -> None:
+    async def handle_question(self, message: Question, ctx: MessageContext) -> None:
+        print(f"{'-'*80}\nExpert Recruiter analyzing problem:\n{message.content}")
+        
         # Notify callback that agent is thinking
         if self._callback:
-            self._callback.on_agent_thinking(self.id, self._round)
+            self._callback.on_agent_thinking("ExpertRecruiter", 0)
         
-        # Simulate thinking time
-        await asyncio.sleep(2)
+        # Perform web search to help with analysis
+        search_results = await simple_search(message.content)
         
-        # Add the question to the memory.
-        self._history.append(UserMessage(content=message.content, source="user"))
-        # Make an inference using the model.
-        model_result = await self._model_client.create(self._system_messages + self._history)
+        # Prepare prompt with search results
+        prompt = (
+            f"Analyze this mathematical problem and decide which expert(s) should solve it:\n"
+            f"Problem: {message.content}\n\n"
+            f"Additional context from research:\n{search_results}\n\n"
+            f"Based on your analysis, which expert(s) should handle this problem?"
+        )
+        
+        # Add the question to history and get AI analysis
+        history = [UserMessage(content=prompt, source="user")]
+        model_result = await self._model_client.create(self._system_messages + history)
         assert isinstance(model_result.content, str)
-        # Add the response to the memory.
-        self._history.append(AssistantMessage(content=model_result.content, source=self.metadata["type"]))
         
-        print(f"{'-'*80}\n{self._role_name} ({self.id}) round {self._round}:\n{model_result.content}")
+        print(f"Expert Recruiter analysis:\n{model_result.content}")
         
-        # Extract the answer from the response.
+        # Parse the response to extract assigned experts
+        assigned_experts = []
+        reasoning = ""
+        
+        lines = model_result.content.split('\n')
+        for line in lines:
+            if line.startswith("ASSIGNED_EXPERTS:"):
+                expert_text = line.replace("ASSIGNED_EXPERTS:", "").strip()
+                if "both" in expert_text.lower():
+                    assigned_experts = ["GeometryExpert", "AlgebraExpert"]
+                elif "GeometryExpert" in expert_text:
+                    assigned_experts = ["GeometryExpert"]
+                elif "AlgebraExpert" in expert_text:
+                    assigned_experts = ["AlgebraExpert"] 
+                else:
+                    assigned_experts = ["AlgebraExpert"]  # Default
+            elif line.startswith("REASONING:"):
+                reasoning = line.replace("REASONING:", "").strip()
+        
+        if not assigned_experts:
+            assigned_experts = ["AlgebraExpert"]  # Safe default
+        
+        if not reasoning:
+            reasoning = "General mathematical problem requiring expert analysis."
+
+        # Notify callback about expert assignment
+        if self._callback:
+            self._callback.on_expert_assignment(assigned_experts, reasoning)
+            self._callback.on_agent_response("ExpertRecruiter", 0, model_result.content, f"Assigned: {', '.join(assigned_experts)}")
+        
+        # Send assignment to experts
+        assignment = ExpertAssignment(
+            question=message.content,
+            assigned_experts=assigned_experts,
+            reasoning=reasoning
+        )
+        
+        await self.publish_message(assignment, topic_id=DefaultTopicId())
+
+
+@default_subscription  
+class GeometryExpert(RoutedAgent):
+    """Geometry Expert specialized in spatial reasoning and geometric problems"""
+    
+    def __init__(self, model_client: ChatCompletionClient, callback: DebateCallback = None) -> None:
+        super().__init__("Geometry Expert")
+        self._model_client = model_client
+        self._callback = callback
+        
+        self._system_messages = [
+            SystemMessage(
+                content=(
+                    "You are a Geometry Expert (幾何学専門家) specialized in spatial reasoning, geometric shapes, measurements, and geometric problem solving. "
+                    "You excel at visualizing geometric relationships and applying geometric principles. "
+                    "Focus on geometric aspects of problems: shapes, areas, perimeters, volumes, angles, coordinates, and spatial relationships. "
+                    "Apply geometric principles, spatial reasoning, and measurement concepts to provide clear solutions. "
+                    "Your final answer should be a single numerical number in the form of {{answer}}, at the end of your response."
+                )
+            )
+        ]
+
+    @message_handler
+    async def handle_assignment(self, message: ExpertAssignment, ctx: MessageContext) -> None:
+        if "GeometryExpert" not in message.assigned_experts:
+            return  # Not assigned to this problem
+            
+        print(f"{'-'*80}\nGeometry Expert solving problem:\n{message.question}")
+        
+        # Notify callback that agent is thinking
+        if self._callback:
+            self._callback.on_agent_thinking("GeometryExpert", 1)
+        
+        prompt = (
+            f"As a Geometry Expert, solve this mathematical problem using geometric principles:\n"
+            f"Problem: {message.question}\n"
+            f"Assignment reasoning: {message.reasoning}\n\n"
+            f"Focus on the geometric aspects and provide a clear solution with geometric reasoning."
+        )
+        
+        history = [UserMessage(content=prompt, source="user")]
+        model_result = await self._model_client.create(self._system_messages + history)
+        assert isinstance(model_result.content, str)
+        
+        print(f"Geometry Expert solution:\n{model_result.content}")
+        
+        # Extract answer
         match = re.search(r"\{\{(\-?\d+(\.\d+)?)\}\}", model_result.content)
-        if match is None:
-            raise ValueError("The model response does not contain the answer.")
-        answer = match.group(1)
+        answer = match.group(1) if match else "No answer found"
         
         # Notify callback
         if self._callback:
-            self._callback.on_agent_response(self.id, self._round, model_result.content, answer)
+            self._callback.on_agent_response("GeometryExpert", 1, model_result.content, answer)
         
-        # Increment the counter.
-        self._round += 1
-        if self._round == self._max_round:
-            # If the counter reaches the maximum round, publishes a final response.
-            await self.publish_message(FinalSolverResponse(answer=answer), topic_id=DefaultTopicId())
-        else:
-            # Publish intermediate response to the topic associated with this solver.
-            await self.publish_message(
-                IntermediateSolverResponse(
-                    content=model_result.content,
-                    question=message.question,
-                    answer=answer,
-                    round=self._round,
-                ),
-                topic_id=DefaultTopicId(type=self._topic_type),
+        # Send solution
+        solution = ExpertSolution(
+            expert_name="GeometryExpert",
+            question=message.question,
+            solution=model_result.content,
+            answer=answer
+        )
+        
+        await self.publish_message(solution, topic_id=DefaultTopicId())
+
+
+@default_subscription
+class AlgebraExpert(RoutedAgent):
+    """Algebra Expert specialized in algebraic thinking and problem solving"""
+    
+    def __init__(self, model_client: ChatCompletionClient, callback: DebateCallback = None) -> None:
+        super().__init__("Algebra Expert")
+        self._model_client = model_client
+        self._callback = callback
+        
+        self._system_messages = [
+            SystemMessage(
+                content=(
+                    "You are an Algebra Expert (代数学専門家) specialized in algebraic thinking, equations, variables, and mathematical relationships. "
+                    "You excel at pattern recognition, algebraic manipulation, and solving equations. "
+                    "Focus on algebraic aspects of problems: equations, unknowns, variables, mathematical relationships, patterns, and systematic problem solving. "
+                    "Apply algebraic thinking, equation solving, and mathematical relationship analysis to provide clear solutions. "
+                    "Your final answer should be a single numerical number in the form of {{answer}}, at the end of your response."
+                )
             )
+        ]
+
+    @message_handler  
+    async def handle_assignment(self, message: ExpertAssignment, ctx: MessageContext) -> None:
+        if "AlgebraExpert" not in message.assigned_experts:
+            return  # Not assigned to this problem
+            
+        print(f"{'-'*80}\nAlgebra Expert solving problem:\n{message.question}")
+        
+        # Notify callback that agent is thinking  
+        if self._callback:
+            self._callback.on_agent_thinking("AlgebraExpert", 1)
+        
+        prompt = (
+            f"As an Algebra Expert, solve this mathematical problem using algebraic methods:\n"
+            f"Problem: {message.question}\n"
+            f"Assignment reasoning: {message.reasoning}\n\n"
+            f"Focus on the algebraic aspects and provide a clear solution with algebraic reasoning."
+        )
+        
+        history = [UserMessage(content=prompt, source="user")]
+        model_result = await self._model_client.create(self._system_messages + history)
+        assert isinstance(model_result.content, str)
+        
+        print(f"Algebra Expert solution:\n{model_result.content}")
+        
+        # Extract answer
+        match = re.search(r"\{\{(\-?\d+(\.\d+)?)\}\}", model_result.content)
+        answer = match.group(1) if match else "No answer found"
+        
+        # Notify callback
+        if self._callback:
+            self._callback.on_agent_response("AlgebraExpert", 1, model_result.content, answer)
+        
+        # Send solution
+        solution = ExpertSolution(
+            expert_name="AlgebraExpert", 
+            question=message.question,
+            solution=model_result.content,
+            answer=answer
+        )
+        
+        await self.publish_message(solution, topic_id=DefaultTopicId())
+
+
+@default_subscription
+class Evaluator(RoutedAgent):
+    """Evaluator that validates solutions from experts"""
+    
+    def __init__(self, model_client: ChatCompletionClient, callback: DebateCallback = None) -> None:
+        super().__init__("Evaluator")
+        self._model_client = model_client
+        self._callback = callback
+        self._solutions_buffer: List[ExpertSolution] = []
+        self._expected_experts: List[str] = []
+        self._current_question = ""
+        
+        self._system_messages = [
+            SystemMessage(
+                content=(
+                    "You are an Evaluator (評価者) who verifies mathematical solutions and provides critical feedback. "
+                    "Your job is to check the accuracy and reasoning of solutions provided by expert agents. "
+                    "Evaluate each solution for:\n"
+                    "1. Mathematical accuracy - are the calculations correct?\n"
+                    "2. Logical reasoning - does the approach make sense?\n"
+                    "3. Completeness - is the solution thorough?\n"
+                    "4. Consistency - do multiple solutions agree?\n\n"
+                    "Provide a final validated answer and explain your evaluation process. "
+                    "Your final answer should be a single numerical number in the form of {{answer}}, at the end of your response."
+                )
+            )
+        ]
 
     @message_handler
-    async def handle_response(self, message: IntermediateSolverResponse, ctx: MessageContext) -> None:
-        # Add neighbor's response to the buffer.
-        self._buffer.setdefault(message.round, []).append(message)
-        # Check if all neighbors have responded.
-        if len(self._buffer[message.round]) == self._num_neighbors:
-            print(
-                f"{'-'*80}\n{self._role_name} ({self.id}) round {message.round}:\nReceived all responses from {self._num_neighbors} neighbors."
-            )
+    async def handle_assignment(self, message: ExpertAssignment, ctx: MessageContext) -> None:
+        # Track which experts are expected to respond
+        self._expected_experts = message.assigned_experts.copy()
+        self._current_question = message.question
+        self._solutions_buffer.clear()
+        print(f"{'-'*80}\nEvaluator waiting for solutions from: {', '.join(self._expected_experts)}")
+
+    @message_handler
+    async def handle_solution(self, message: ExpertSolution, ctx: MessageContext) -> None:
+        if message.expert_name in self._expected_experts:
+            self._solutions_buffer.append(message)
+            print(f"Evaluator received solution from {message.expert_name}")
             
-            # Notify callback about round completion
-            if self._callback:
-                self._callback.on_round_complete(message.round)
-            
-            # Add delay to simulate deliberation between rounds
-            await asyncio.sleep(1)
-            
-            # Prepare the prompt for the next question.
-            prompt = f"As a {self._role_name}, review these solutions from other experts:\n"
-            for i, resp in enumerate(self._buffer[message.round]):
-                prompt += f"Expert {i+1} solution: {resp.content}\n"
-            prompt += (
-                f"Based on your expertise as a {self._role_name} and the solutions from other experts, "
-                f"provide your analysis and solution to the problem. {self._role_task} "
-                f"The original problem is: {message.question}. "
-                "Consider the approaches shown by other experts and explain your reasoning from your specialized perspective. "
-                "Your final answer should be a single numerical number, "
-                "in the form of {{answer}}, at the end of your response."
-            )
-            # Send the question to the agent itself to solve.
-            await self.send_message(SolverRequest(content=prompt, question=message.question), self.id)
-            # Clear the buffer.
-            self._buffer.pop(message.round)
+            # Check if all expected solutions received
+            received_experts = [sol.expert_name for sol in self._solutions_buffer]
+            if set(received_experts) == set(self._expected_experts):
+                await self._evaluate_solutions()
+
+    async def _evaluate_solutions(self):
+        print(f"{'-'*80}\nEvaluator evaluating {len(self._solutions_buffer)} solutions")
+        
+        # Notify callback that evaluation is starting
+        if self._callback:
+            self._callback.on_evaluation_start()
+            self._callback.on_agent_thinking("Evaluator", 2)
+        
+        # Prepare evaluation prompt
+        solutions_text = ""
+        for i, solution in enumerate(self._solutions_buffer, 1):
+            solutions_text += f"\nSolution {i} from {solution.expert_name}:\n{solution.solution}\nAnswer: {solution.answer}\n"
+        
+        prompt = (
+            f"Evaluate these expert solutions for the problem:\n"
+            f"Problem: {self._current_question}\n"
+            f"Expert Solutions:{solutions_text}\n\n"
+            f"Provide your evaluation of each solution and determine the final validated answer. "
+            f"Check mathematical accuracy, reasoning quality, and consistency between solutions."
+        )
+        
+        history = [UserMessage(content=prompt, source="user")]
+        model_result = await self._model_client.create(self._system_messages + history)
+        assert isinstance(model_result.content, str)
+        
+        print(f"Evaluator validation:\n{model_result.content}")
+        
+        # Extract final validated answer
+        match = re.search(r"\{\{(\-?\d+(\.\d+)?)\}\}", model_result.content)
+        final_answer = match.group(1) if match else "Evaluation incomplete"
+        
+        # Notify callback
+        if self._callback:
+            self._callback.on_agent_response("Evaluator", 2, model_result.content, final_answer)
+            self._callback.on_debate_end(final_answer)
+        
+        # Publish final answer
+        await self.publish_message(Answer(content=final_answer), topic_id=DefaultTopicId())
 
 
 @default_subscription
 class MathAggregator(RoutedAgent):
-    def __init__(self, num_solvers: int, callback: DebateCallback = None) -> None:
+    def __init__(self, callback: DebateCallback = None) -> None:
         super().__init__("Math Aggregator")
-        self._num_solvers = num_solvers
-        self._buffer: List[FinalSolverResponse] = []
         self._callback = callback
 
     @message_handler
@@ -233,28 +479,12 @@ class MathAggregator(RoutedAgent):
         if self._callback:
             self._callback.on_debate_start(message.content)
         
-        prompt = (
-            f"Can you solve the following math problem?\n{message.content}\n"
-            "Explain your reasoning. Your final answer should be a single numerical number, "
-            "in the form of {{answer}}, at the end of your response."
-        )
-        print(f"{'-'*80}\nAggregator {self.id} publishes initial solver request.")
-        await self.publish_message(SolverRequest(content=prompt, question=message.content), topic_id=DefaultTopicId())
+        print(f"{'-'*80}\nAggregator {self.id} forwards question to Expert Recruiter.")
+        # Forward question directly to Expert Recruiter instead of broadcasting
+        await self.publish_message(message, topic_id=DefaultTopicId())
 
     @message_handler
-    async def handle_final_solver_response(self, message: FinalSolverResponse, ctx: MessageContext) -> None:
-        self._buffer.append(message)
-        if len(self._buffer) == self._num_solvers:
-            print(f"{'-'*80}\nAggregator {self.id} received all final answers from {self._num_solvers} solvers.")
-            # Find the majority answer.
-            answers = [resp.answer for resp in self._buffer]
-            majority_answer = max(set(answers), key=answers.count)
-            # Publish the aggregated response.
-            await self.publish_message(Answer(content=majority_answer), topic_id=DefaultTopicId())
-            # Clear the responses.
-            self._buffer.clear()
-            print(f"{'-'*80}\nAggregator {self.id} publishes final answer:\n{majority_answer}")
-            
-            # Notify callback about debate end
-            if self._callback:
-                self._callback.on_debate_end(majority_answer)
+    async def handle_final_answer(self, message: Answer, ctx: MessageContext) -> None:
+        print(f"{'-'*80}\nAggregator {self.id} received final validated answer: {message.content}")
+        # The final answer is already handled by the Evaluator's callback
+        # No additional processing needed here
