@@ -71,6 +71,12 @@ function handleMessage(message) {
         case 'agent_response':
             handleAgentResponse(message);
             break;
+        case 'expert_assignment':
+            handleExpertAssignment(message);
+            break;
+        case 'evaluation_start':
+            handleEvaluationStart(message);
+            break;
         case 'round_complete':
             handleRoundComplete(message);
             break;
@@ -174,6 +180,38 @@ function handleAgentResponse(message) {
         setTimeout(() => {
             setAgentState(agentElement, 'completed');
         }, 2000);
+    }
+}
+
+// Handle expert assignment
+function handleExpertAssignment(message) {
+    // Update status to show expert assignment
+    updateStatus('running', `専門家を割り当て中: ${message.assigned_experts.join(', ')}`);
+    
+    // Highlight assigned experts
+    const allAgents = ['ExpertRecruiter', 'GeometryExpert', 'AlgebraExpert', 'Evaluator'];
+    allAgents.forEach(agentName => {
+        const element = document.getElementById(`agent${agentName}`);
+        if (element) {
+            if (message.assigned_experts.includes(agentName)) {
+                element.classList.add('assigned');
+                setAgentState(element, 'thinking');
+            } else {
+                element.classList.remove('assigned');
+                setAgentState(element, 'waiting');
+            }
+        }
+    });
+}
+
+// Handle evaluation start
+function handleEvaluationStart(message) {
+    updateStatus('running', '評価者が解答を検証中...');
+    
+    // Set Evaluator to thinking state
+    const evaluatorElement = document.getElementById('agentEvaluator');
+    if (evaluatorElement) {
+        setAgentState(evaluatorElement, 'thinking');
     }
 }
 
@@ -308,6 +346,12 @@ function addLogEntry(message) {
             break;
         case 'agent_response':
             content = `${getFriendlyAgentName(message.agent_id)} (ラウンド${message.round}): ${message.answer}`;
+            break;
+        case 'expert_assignment':
+            content = `Expert Recruiterが専門家を割り当て: ${message.assigned_experts.join(', ')} - 理由: ${message.reasoning}`;
+            break;
+        case 'evaluation_start':
+            content = `Evaluatorが解答の検証を開始`;
             break;
         case 'round_complete':
             content = `ラウンド ${message.round} 完了`;

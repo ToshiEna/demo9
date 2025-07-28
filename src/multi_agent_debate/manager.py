@@ -2,18 +2,16 @@ import asyncio
 from typing import List, Optional
 from autogen_core import SingleThreadedAgentRuntime, TypeSubscription, DefaultTopicId
 from autogen_ext.models.openai import AzureOpenAIChatCompletionClient
-from .core import MathSolver, MathAggregator, Question, DebateCallback
+from .core import ExpertRecruiter, GeometryExpert, AlgebraExpert, Evaluator, MathAggregator, Question, DebateCallback
 
 
 class DebateManager:
-    def __init__(self, azure_api_key: str, azure_endpoint: str, azure_deployment: str, model_name: str = "gpt-4o-mini", api_version: str = "2024-06-01", num_solvers: int = 4, max_rounds: int = 3):
+    def __init__(self, azure_api_key: str, azure_endpoint: str, azure_deployment: str, model_name: str = "gpt-4o-mini", api_version: str = "2024-06-01"):
         self.azure_api_key = azure_api_key
         self.azure_endpoint = azure_endpoint
         self.azure_deployment = azure_deployment
         self.model_name = model_name
         self.api_version = api_version
-        self.num_solvers = num_solvers
-        self.max_rounds = max_rounds
         self.runtime = None
         self.model_client = None
         self.callback: Optional[DebateCallback] = None
@@ -33,48 +31,60 @@ class DebateManager:
             api_key=self.azure_api_key
         )
         
-        # Define specialized agent roles based on M500 research framework
-        agent_configs = [
-            {"name": "ExpertRecruiter", "role": "ExpertRecruiter"},
-            {"name": "GeometryExpert", "role": "GeometryExpert"}, 
-            {"name": "AlgebraExpert", "role": "AlgebraExpert"},
-            {"name": "Evaluator", "role": "Evaluator"}
-        ]
+        # Register the new specialized agents
+        await ExpertRecruiter.register(
+            self.runtime,
+            "ExpertRecruiter",
+            lambda: ExpertRecruiter(
+                model_client=self.model_client,
+                callback=self.callback
+            ),
+        )
         
-        # Register solver agents with specialized roles
-        for config in agent_configs:
-            await MathSolver.register(
-                self.runtime,
-                config["name"],
-                lambda name=config["name"], role=config["role"]: MathSolver(
-                    model_client=self.model_client,
-                    topic_type=name,
-                    role_type=role,
-                    num_neighbors=2,  # Each solver has 2 neighbors in ring topology
-                    max_round=self.max_rounds,
-                    callback=self.callback
-                ),
-            )
+        await GeometryExpert.register(
+            self.runtime,
+            "GeometryExpert", 
+            lambda: GeometryExpert(
+                model_client=self.model_client,
+                callback=self.callback
+            ),
+        )
+        
+        await AlgebraExpert.register(
+            self.runtime,
+            "AlgebraExpert",
+            lambda: AlgebraExpert(
+                model_client=self.model_client,
+                callback=self.callback
+            ),
+        )
+        
+        await Evaluator.register(
+            self.runtime,
+            "Evaluator",
+            lambda: Evaluator(
+                model_client=self.model_client,
+                callback=self.callback
+            ),
+        )
         
         # Register aggregator
         await MathAggregator.register(
             self.runtime, 
             "MathAggregator", 
-            lambda: MathAggregator(num_solvers=self.num_solvers, callback=self.callback)
+            lambda: MathAggregator(callback=self.callback)
         )
         
-        # Set up communication topology (ring structure)  
-        # ExpertRecruiter -> GeometryExpert -> AlgebraExpert -> Evaluator -> ExpertRecruiter
-        agent_names = [config["name"] for config in agent_configs]
-        for i in range(len(agent_names)):
-            current_agent = agent_names[i]
-            # Connect to next agent (circular)
-            next_agent = agent_names[(i + 1) % len(agent_names)]
-            # Connect to previous agent (circular)
-            prev_agent = agent_names[(i - 1) % len(agent_names)]
-            
-            await self.runtime.add_subscription(TypeSubscription(current_agent, next_agent))
-            await self.runtime.add_subscription(TypeSubscription(current_agent, prev_agent))
+        # Set up communication topology for sequential workflow
+        # MathAggregator -> ExpertRecruiter -> GeometryExpert/AlgebraExpert -> Evaluator -> MathAggregator
+        
+        # All agents can receive messages from default topic
+        await self.runtime.add_subscription(TypeSubscription("Question", "ExpertRecruiter"))
+        await self.runtime.add_subscription(TypeSubscription("ExpertAssignment", "GeometryExpert"))
+        await self.runtime.add_subscription(TypeSubscription("ExpertAssignment", "AlgebraExpert"))
+        await self.runtime.add_subscription(TypeSubscription("ExpertAssignment", "Evaluator"))
+        await self.runtime.add_subscription(TypeSubscription("ExpertSolution", "Evaluator"))
+        await self.runtime.add_subscription(TypeSubscription("Answer", "MathAggregator"))
     
     async def solve_problem(self, question: str) -> str:
         """Solve a math problem using multi-agent debate"""
