@@ -9,8 +9,8 @@
 <body>
     <div class="container">
         <header>
-            <h1>🤖 Multi-Agent Debate Demo</h1>
-            <p>マルチエージェント議論システム - 数学問題を複数のAIエージェントが協力して解決</p>
+            <h1>🤖 Multi-Agent Collaborative Reasoning Demo</h1>
+            <p>専門家エージェントシステム - 複数の専門AIエージェントが協調推論で複雑な数学問題を解決</p>
         </header>
 
         <div class="main-content">
@@ -19,7 +19,7 @@
                 <h2>📝 数学問題を入力</h2>
                 <div class="input-group">
                     <textarea id="questionInput" placeholder="例: 太郎くんは4月に友達48人にクリップを売りました。5月には4月の半分の数のクリップを売りました。太郎くんは4月と5月で合計何個のクリップを売ったでしょうか？" rows="3"></textarea>
-                    <button id="solveButton" onclick="startDebate()">🚀 議論開始</button>
+                    <button id="solveButton" onclick="startDebate()">🚀 協調推論開始</button>
                 </div>
                 <div class="example-questions">
                     <h3>サンプル問題:</h3>
@@ -48,7 +48,7 @@
 
             <!-- 議論可視化セクション -->
             <div class="debate-section">
-                <h2>🎭 議論の進行</h2>
+                <h2>🎭 専門家協調推論の進行</h2>
                 
                 <!-- 質問表示 -->
                 <div id="currentQuestion" class="current-question" style="display: none;">
@@ -58,8 +58,9 @@
 
                 <!-- エージェント議論エリア -->
                 <div class="agents-container">
-                    <div class="agent-card" id="agentA">
-                        <h3>🤖 Agent A</h3>
+                    <div class="agent-card" id="agentExpertRecruiter">
+                        <h3>🎯 Expert Recruiter</h3>
+                        <p class="agent-role">専門家採用担当者</p>
                         <div class="agent-status">待機中</div>
                         <div class="agent-responses"></div>
                         <div class="thinking-indicator" style="display: none;">
@@ -68,11 +69,12 @@
                                 <span></span>
                                 <span></span>
                             </div>
-                            <span class="thinking-text">考え中...</span>
+                            <span class="thinking-text">分析中...</span>
                         </div>
                     </div>
-                    <div class="agent-card" id="agentB">
-                        <h3>🤖 Agent B</h3>
+                    <div class="agent-card" id="agentGeometryExpert">
+                        <h3>📐 Geometry Expert</h3>
+                        <p class="agent-role">幾何学専門家</p>
                         <div class="agent-status">待機中</div>
                         <div class="agent-responses"></div>
                         <div class="thinking-indicator" style="display: none;">
@@ -81,11 +83,12 @@
                                 <span></span>
                                 <span></span>
                             </div>
-                            <span class="thinking-text">考え中...</span>
+                            <span class="thinking-text">幾何学的分析中...</span>
                         </div>
                     </div>
-                    <div class="agent-card" id="agentC">
-                        <h3>🤖 Agent C</h3>
+                    <div class="agent-card" id="agentAlgebraExpert">
+                        <h3>🔢 Algebra Expert</h3>
+                        <p class="agent-role">代数学専門家</p>
                         <div class="agent-status">待機中</div>
                         <div class="agent-responses"></div>
                         <div class="thinking-indicator" style="display: none;">
@@ -94,11 +97,12 @@
                                 <span></span>
                                 <span></span>
                             </div>
-                            <span class="thinking-text">考え中...</span>
+                            <span class="thinking-text">代数的分析中...</span>
                         </div>
                     </div>
-                    <div class="agent-card" id="agentD">
-                        <h3>🤖 Agent D</h3>
+                    <div class="agent-card" id="agentEvaluator">
+                        <h3>✅ Evaluator</h3>
+                        <p class="agent-role">評価者</p>
                         <div class="agent-status">待機中</div>
                         <div class="agent-responses"></div>
                         <div class="thinking-indicator" style="display: none;">
@@ -107,7 +111,7 @@
                                 <span></span>
                                 <span></span>
                             </div>
-                            <span class="thinking-text">考え中...</span>
+                            <span class="thinking-text">評価中...</span>
                         </div>
                     </div>
                 </div>

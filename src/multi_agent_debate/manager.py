@@ -33,16 +33,23 @@ class DebateManager:
             api_key=self.azure_api_key
         )
         
-        # Register solver agents
-        solver_names = [f"MathSolver{chr(65+i)}" for i in range(self.num_solvers)]  # A, B, C, D
+        # Define specialized agent roles based on M500 research framework
+        agent_configs = [
+            {"name": "ExpertRecruiter", "role": "ExpertRecruiter"},
+            {"name": "GeometryExpert", "role": "GeometryExpert"}, 
+            {"name": "AlgebraExpert", "role": "AlgebraExpert"},
+            {"name": "Evaluator", "role": "Evaluator"}
+        ]
         
-        for solver_name in solver_names:
+        # Register solver agents with specialized roles
+        for config in agent_configs:
             await MathSolver.register(
                 self.runtime,
-                solver_name,
-                lambda name=solver_name: MathSolver(
+                config["name"],
+                lambda name=config["name"], role=config["role"]: MathSolver(
                     model_client=self.model_client,
                     topic_type=name,
+                    role_type=role,
                     num_neighbors=2,  # Each solver has 2 neighbors in ring topology
                     max_round=self.max_rounds,
                     callback=self.callback
@@ -56,17 +63,18 @@ class DebateManager:
             lambda: MathAggregator(num_solvers=self.num_solvers, callback=self.callback)
         )
         
-        # Set up communication topology (ring structure)
-        # A -> B -> C -> D -> A (each agent connects to 2 neighbors)
-        for i in range(self.num_solvers):
-            current_solver = solver_names[i]
-            # Connect to next solver (circular)
-            next_solver = solver_names[(i + 1) % self.num_solvers]
-            # Connect to previous solver (circular)
-            prev_solver = solver_names[(i - 1) % self.num_solvers]
+        # Set up communication topology (ring structure)  
+        # ExpertRecruiter -> GeometryExpert -> AlgebraExpert -> Evaluator -> ExpertRecruiter
+        agent_names = [config["name"] for config in agent_configs]
+        for i in range(len(agent_names)):
+            current_agent = agent_names[i]
+            # Connect to next agent (circular)
+            next_agent = agent_names[(i + 1) % len(agent_names)]
+            # Connect to previous agent (circular)
+            prev_agent = agent_names[(i - 1) % len(agent_names)]
             
-            await self.runtime.add_subscription(TypeSubscription(current_solver, next_solver))
-            await self.runtime.add_subscription(TypeSubscription(current_solver, prev_solver))
+            await self.runtime.add_subscription(TypeSubscription(current_agent, next_agent))
+            await self.runtime.add_subscription(TypeSubscription(current_agent, prev_agent))
     
     async def solve_problem(self, question: str) -> str:
         """Solve a math problem using multi-agent debate"""
