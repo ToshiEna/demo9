@@ -47,8 +47,8 @@ function initWebSocket() {
 // Get friendly agent name for display
 function getFriendlyAgentName(agentId) {
     const id = agentId.toLowerCase();
-    if (id.includes('expertrecruiter')) {
-        return 'Expert Recruiter (専門家採用担当者)';
+    if (id.includes('orchestrator')) {
+        return 'Orchestrator (指揮者)';
     } else if (id.includes('geometryexpert')) {
         return 'Geometry Expert (幾何学専門家)';
     } else if (id.includes('algebraexpert')) {
@@ -83,6 +83,12 @@ function handleMessage(message) {
         case 'debate_end':
             handleDebateEnd(message);
             break;
+        case 'task_ledger_update':
+            handleTaskLedgerUpdate(message);
+            break;
+        case 'progress_ledger_update':
+            handleProgressLedgerUpdate(message);
+            break;
         case 'error':
             handleError(message);
             break;
@@ -107,6 +113,7 @@ function handleDebateStart(message) {
     
     // Clear previous results
     clearAgentResponses();
+    clearLedgers();
     currentRound = 0;
     initializeRoundsProgress();
     
@@ -125,8 +132,8 @@ function handleAgentThinking(message) {
     let agentElement = null;
     
     // Map agent IDs to HTML element IDs
-    if (agentId.includes('expertrecruiter')) {
-        agentElement = document.getElementById('agentExpertRecruiter');
+    if (agentId.includes('orchestrator')) {
+        agentElement = document.getElementById('agentOrchestrator');
     } else if (agentId.includes('geometryexpert')) {
         agentElement = document.getElementById('agentGeometryExpert');
     } else if (agentId.includes('algebraexpert')) {
@@ -146,8 +153,8 @@ function handleAgentResponse(message) {
     let agentElement = null;
     
     // Map agent IDs to HTML element IDs
-    if (agentId.includes('expertrecruiter')) {
-        agentElement = document.getElementById('agentExpertRecruiter');
+    if (agentId.includes('orchestrator')) {
+        agentElement = document.getElementById('agentOrchestrator');
     } else if (agentId.includes('geometryexpert')) {
         agentElement = document.getElementById('agentGeometryExpert');
     } else if (agentId.includes('algebraexpert')) {
@@ -189,7 +196,7 @@ function handleExpertAssignment(message) {
     updateStatus('running', `専門家を割り当て中: ${message.assigned_experts.join(', ')}`);
     
     // Highlight assigned experts
-    const allAgents = ['ExpertRecruiter', 'GeometryExpert', 'AlgebraExpert', 'Evaluator'];
+    const allAgents = ['Orchestrator', 'GeometryExpert', 'AlgebraExpert', 'Evaluator'];
     allAgents.forEach(agentName => {
         const element = document.getElementById(`agent${agentName}`);
         if (element) {
@@ -244,6 +251,109 @@ function handleDebateEnd(message) {
     // Re-enable solve button
     solveButton.disabled = false;
     solveButton.textContent = '🚀 協調推論開始';
+}
+
+// Handle Task Ledger updates
+function handleTaskLedgerUpdate(message) {
+    const taskLedger = message.task_ledger;
+    
+    // Animate ledger section
+    const taskLedgerSection = document.querySelector('.ledger-section:first-child');
+    taskLedgerSection.classList.add('updated');
+    setTimeout(() => taskLedgerSection.classList.remove('updated'), 1000);
+    
+    // Update given facts
+    updateLedgerList('givenFacts', taskLedger.given_facts);
+    
+    // Update facts to lookup
+    updateLedgerList('factsToLookup', taskLedger.facts_to_lookup);
+    
+    // Update facts to derive
+    updateLedgerList('factsToDerive', taskLedger.facts_to_derive);
+    
+    // Update educated guesses
+    updateLedgerList('educatedGuesses', taskLedger.educated_guesses);
+    
+    // Update task plan (ordered list)
+    updateLedgerList('taskPlan', taskLedger.task_plan);
+}
+
+// Handle Progress Ledger updates
+function handleProgressLedgerUpdate(message) {
+    const progressLedger = message.progress_ledger;
+    
+    // Animate ledger section
+    const progressLedgerSection = document.querySelector('.ledger-section:last-child');
+    progressLedgerSection.classList.add('updated');
+    setTimeout(() => progressLedgerSection.classList.remove('updated'), 1000);
+    
+    // Update task completion status
+    const taskCompleteElement = document.getElementById('taskComplete');
+    taskCompleteElement.textContent = progressLedger.task_complete ? '完了' : '未完了';
+    taskCompleteElement.className = progressLedger.task_complete ? 'status-indicator complete' : 'status-indicator';
+    
+    // Update progress being made
+    const progressBeingMadeElement = document.getElementById('progressBeingMade');
+    progressBeingMadeElement.textContent = progressLedger.progress_being_made ? '進行中' : '停滞中';
+    progressBeingMadeElement.className = progressLedger.progress_being_made ? 'status-indicator progress' : 'status-indicator stalled';
+    
+    // Update stall count
+    const stallCountElement = document.getElementById('stallCount');
+    stallCountElement.textContent = progressLedger.stall_count;
+    
+    // Update next speaker
+    const nextSpeakerElement = document.getElementById('nextSpeaker');
+    nextSpeakerElement.textContent = progressLedger.next_speaker || '-';
+    
+    // Update next speaker instruction
+    const instructionElement = document.getElementById('nextSpeakerInstruction');
+    instructionElement.textContent = progressLedger.next_speaker_instruction || '-';
+    
+    // Update completed steps
+    updateLedgerList('completedSteps', progressLedger.completed_steps);
+}
+
+// Helper function to update ledger lists
+function updateLedgerList(elementId, items) {
+    const listElement = document.getElementById(elementId);
+    const currentItems = Array.from(listElement.children).map(li => li.textContent);
+    
+    // Clear existing items
+    listElement.innerHTML = '';
+    
+    // Add all items
+    items.forEach((item, index) => {
+        const listItem = document.createElement('li');
+        listItem.textContent = item;
+        
+        // Highlight new items
+        if (!currentItems.includes(item)) {
+            listItem.classList.add('new-item');
+            setTimeout(() => listItem.classList.remove('new-item'), 2000);
+        }
+        
+        listElement.appendChild(listItem);
+    });
+}
+
+// Clear ledger displays
+function clearLedgers() {
+    // Clear Task Ledger
+    document.getElementById('givenFacts').innerHTML = '';
+    document.getElementById('factsToLookup').innerHTML = '';
+    document.getElementById('factsToDerive').innerHTML = '';
+    document.getElementById('educatedGuesses').innerHTML = '';
+    document.getElementById('taskPlan').innerHTML = '';
+    
+    // Clear Progress Ledger
+    document.getElementById('taskComplete').textContent = '未完了';
+    document.getElementById('taskComplete').className = 'status-indicator';
+    document.getElementById('progressBeingMade').textContent = '-';
+    document.getElementById('progressBeingMade').className = 'status-indicator';
+    document.getElementById('stallCount').textContent = '0';
+    document.getElementById('nextSpeaker').textContent = '-';
+    document.getElementById('nextSpeakerInstruction').textContent = '-';
+    document.getElementById('completedSteps').innerHTML = '';
 }
 
 // Handle errors
@@ -348,7 +458,13 @@ function addLogEntry(message) {
             content = `${getFriendlyAgentName(message.agent_id)} (ラウンド${message.round}): ${message.answer}`;
             break;
         case 'expert_assignment':
-            content = `Expert Recruiterが専門家を割り当て: ${message.assigned_experts.join(', ')} - 理由: ${message.reasoning}`;
+            content = `Orchestratorが専門家を割り当て: ${message.assigned_experts.join(', ')} - 理由: ${message.reasoning}`;
+            break;
+        case 'task_ledger_update':
+            content = `Task Ledger更新: ${message.task_ledger.given_facts.length} 個の事実, ${message.task_ledger.task_plan.length} 個の計画ステップ`;
+            break;
+        case 'progress_ledger_update':
+            content = `Progress Ledger更新: 完了=${message.progress_ledger.task_complete}, 次の担当者=${message.progress_ledger.next_speaker || 'なし'}`;
             break;
         case 'evaluation_start':
             content = `Evaluatorが解答の検証を開始`;
