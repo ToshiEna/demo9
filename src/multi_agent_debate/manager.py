@@ -2,7 +2,7 @@ import asyncio
 from typing import List, Optional
 from autogen_core import SingleThreadedAgentRuntime, TypeSubscription, DefaultTopicId
 from autogen_ext.models.openai import AzureOpenAIChatCompletionClient
-from .core import ExpertRecruiter, GeometryExpert, AlgebraExpert, Evaluator, MathAggregator, Question, DebateCallback
+from .core import Orchestrator, GeometryExpert, AlgebraExpert, Evaluator, MathAggregator, Question, DebateCallback
 
 
 class DebateManager:
@@ -32,10 +32,10 @@ class DebateManager:
         )
         
         # Register the new specialized agents
-        await ExpertRecruiter.register(
+        await Orchestrator.register(
             self.runtime,
-            "ExpertRecruiter",
-            lambda: ExpertRecruiter(
+            "Orchestrator",
+            lambda: Orchestrator(
                 model_client=self.model_client,
                 callback=self.callback
             ),
@@ -76,14 +76,15 @@ class DebateManager:
         )
         
         # Set up communication topology for sequential workflow
-        # MathAggregator -> ExpertRecruiter -> GeometryExpert/AlgebraExpert -> Evaluator -> MathAggregator
+        # MathAggregator -> Orchestrator -> GeometryExpert/AlgebraExpert -> Evaluator -> MathAggregator
         
         # All agents can receive messages from default topic
-        await self.runtime.add_subscription(TypeSubscription("Question", "ExpertRecruiter"))
+        await self.runtime.add_subscription(TypeSubscription("Question", "Orchestrator"))
         await self.runtime.add_subscription(TypeSubscription("ExpertAssignment", "GeometryExpert"))
         await self.runtime.add_subscription(TypeSubscription("ExpertAssignment", "AlgebraExpert"))
         await self.runtime.add_subscription(TypeSubscription("ExpertAssignment", "Evaluator"))
         await self.runtime.add_subscription(TypeSubscription("ExpertSolution", "Evaluator"))
+        await self.runtime.add_subscription(TypeSubscription("ExpertSolution", "Orchestrator"))
         await self.runtime.add_subscription(TypeSubscription("Answer", "MathAggregator"))
     
     async def solve_problem(self, question: str) -> str:

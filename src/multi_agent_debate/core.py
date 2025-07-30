@@ -3,8 +3,9 @@ import re
 import urllib.parse
 import urllib.request
 import json
-from dataclasses import dataclass
-from typing import Dict, List
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional
+from enum import Enum
 
 from autogen_core import (
     DefaultTopicId,
@@ -78,6 +79,96 @@ class EvaluationRequest:
     solutions: List[ExpertSolution]
 
 
+@dataclass
+class TaskLedger:
+    """Task Ledger to track problem-solving state"""
+    question: str
+    given_facts: List[str] = field(default_factory=list)
+    facts_to_lookup: List[str] = field(default_factory=list)
+    facts_to_derive: List[str] = field(default_factory=list)
+    educated_guesses: List[str] = field(default_factory=list)
+    task_plan: List[str] = field(default_factory=list)
+    
+    def update_from_analysis(self, analysis_content: str):
+        """Update ledger from orchestrator analysis"""
+        # Extract information from analysis
+        lines = analysis_content.split('\n')
+        current_section = None
+        
+        for line in lines:
+            line = line.strip()
+            if line.startswith("GIVEN_FACTS:"):
+                current_section = "given_facts"
+                fact = line.replace("GIVEN_FACTS:", "").strip()
+                if fact:
+                    self.given_facts.append(fact)
+            elif line.startswith("FACTS_TO_LOOKUP:"):
+                current_section = "facts_to_lookup"
+                fact = line.replace("FACTS_TO_LOOKUP:", "").strip()
+                if fact:
+                    self.facts_to_lookup.append(fact)
+            elif line.startswith("FACTS_TO_DERIVE:"):
+                current_section = "facts_to_derive"
+                fact = line.replace("FACTS_TO_DERIVE:", "").strip()
+                if fact:
+                    self.facts_to_derive.append(fact)
+            elif line.startswith("EDUCATED_GUESSES:"):
+                current_section = "educated_guesses"
+                guess = line.replace("EDUCATED_GUESSES:", "").strip()
+                if guess:
+                    self.educated_guesses.append(guess)
+            elif line.startswith("TASK_PLAN:"):
+                current_section = "task_plan"
+                plan = line.replace("TASK_PLAN:", "").strip()
+                if plan:
+                    self.task_plan.append(plan)
+            elif line.startswith("- ") and current_section:
+                item = line[2:].strip()
+                if current_section == "given_facts":
+                    self.given_facts.append(item)
+                elif current_section == "facts_to_lookup":
+                    self.facts_to_lookup.append(item)
+                elif current_section == "facts_to_derive":
+                    self.facts_to_derive.append(item)
+                elif current_section == "educated_guesses":
+                    self.educated_guesses.append(item)
+                elif current_section == "task_plan":
+                    self.task_plan.append(item)
+
+
+@dataclass
+class ProgressLedger:
+    """Progress Ledger to monitor task execution"""
+    task_complete: bool = False
+    unproductive_loops: int = 0
+    progress_being_made: bool = True
+    next_speaker: Optional[str] = None
+    next_speaker_instruction: str = ""
+    stall_count: int = 0
+    completed_steps: List[str] = field(default_factory=list)
+    
+    def update_progress(self, step_completed: str = None, progress_made: bool = True):
+        """Update progress tracking"""
+        if step_completed:
+            self.completed_steps.append(step_completed)
+        
+        self.progress_being_made = progress_made
+        
+        if not progress_made:
+            self.stall_count += 1
+        else:
+            self.stall_count = 0
+    
+    def check_stall(self) -> bool:
+        """Check if we're in a stall condition"""
+        return self.stall_count > 2 or not self.progress_being_made
+    
+    def set_next_action(self, speaker: str, instruction: str):
+        """Set the next speaker and instruction"""
+        self.next_speaker = speaker
+        self.next_speaker_instruction = instruction
+
+
 class DebateCallback:
     def on_agent_response(self, agent_id: str, round_num: int, content: str, answer: str):
         """Called when an agent provides a response"""
@@ -105,6 +196,14 @@ class DebateCallback:
     
     def on_evaluation_start(self):
         """Called when Evaluator starts validation"""
+        pass
+    
+    def on_task_ledger_update(self, task_ledger: TaskLedger):
+        """Called when Task Ledger is updated"""
+        pass
+    
+    def on_progress_ledger_update(self, progress_ledger: ProgressLedger):
+        """Called when Progress Ledger is updated"""
         pass
 
 
@@ -154,29 +253,51 @@ async def simple_search(query: str, max_results: int = 3) -> str:
 
 
 @default_subscription
-class ExpertRecruiter(RoutedAgent):
-    """Expert Recruiter that analyzes problems and assigns them to appropriate experts"""
+class Orchestrator(RoutedAgent):
+    """Orchestrator that manages Task Ledger and Progress Ledger to coordinate problem-solving"""
     
     def __init__(self, model_client: ChatCompletionClient, callback: DebateCallback = None) -> None:
-        super().__init__("Expert Recruiter")
+        super().__init__("Orchestrator")
         self._model_client = model_client
         self._callback = callback
+        self._task_ledger: Optional[TaskLedger] = None
+        self._progress_ledger: Optional[ProgressLedger] = None
         
         self._system_messages = [
             SystemMessage(
                 content=(
-                    "You are an Expert Recruiter (専門家採用担当者) who analyzes mathematical problems and coordinates the problem-solving process. "
+                    "You are an Orchestrator (指揮者) who manages the problem-solving process using Task Ledger and Progress Ledger. "
                     "Your job is to:\n"
-                    "1. Analyze the given mathematical problem\n"
-                    "2. Identify what types of mathematical expertise are needed (geometry, algebra, both, or general arithmetic)\n"
-                    "3. Decide which expert(s) should solve the problem: GeometryExpert, AlgebraExpert, or both\n"
-                    "4. Provide reasoning for your decision\n\n"
-                    "Guidelines:\n"
+                    "1. Create and update the Task Ledger with:\n"
+                    "   - Given or verified facts from the problem\n"
+                    "   - Facts that need to be looked up\n"
+                    "   - Facts that need to be derived through computation or logic\n"
+                    "   - Educated guesses for missing information\n"
+                    "   - A clear task plan for solving the problem\n"
+                    "2. Update the Progress Ledger to monitor:\n"
+                    "   - Whether the task is complete\n"
+                    "   - Detection of unproductive loops\n"
+                    "   - Whether progress is being made\n"
+                    "   - What the next speaker should be\n"
+                    "   - Instructions for the next speaker\n"
+                    "3. Analyze mathematical problems and decide which expert(s) should solve them\n"
+                    "4. Coordinate the overall problem-solving workflow\n\n"
+                    "Expert assignment guidelines:\n"
                     "- For problems involving shapes, areas, perimeters, angles, spatial relationships: assign GeometryExpert\n"
                     "- For problems involving equations, unknowns, variables, algebraic relationships: assign AlgebraExpert\n"
                     "- For complex problems requiring multiple domains: assign both experts\n"
                     "- For simple arithmetic: assign AlgebraExpert as default\n\n"
-                    "Respond with your analysis and assignment decision. Format your response as:\n"
+                    "Format your response with clear sections:\n"
+                    "TASK_LEDGER_UPDATE:\n"
+                    "GIVEN_FACTS: [list facts from the problem]\n"
+                    "FACTS_TO_LOOKUP: [list facts that need research]\n"
+                    "FACTS_TO_DERIVE: [list facts that need calculation/logic]\n"
+                    "EDUCATED_GUESSES: [list reasonable assumptions]\n"
+                    "TASK_PLAN: [list steps to solve the problem]\n\n"
+                    "PROGRESS_ANALYSIS:\n"
+                    "PROGRESS_MADE: [true/false]\n"
+                    "NEXT_SPEAKER: [GeometryExpert|AlgebraExpert|both]\n"
+                    "SPEAKER_INSTRUCTION: [specific instruction for the expert(s)]\n\n"
                     "ANALYSIS: [your analysis of the problem]\n"
                     "ASSIGNED_EXPERTS: [GeometryExpert|AlgebraExpert|both]\n"
                     "REASONING: [why you chose these experts]"
@@ -186,35 +307,59 @@ class ExpertRecruiter(RoutedAgent):
 
     @message_handler
     async def handle_question(self, message: Question, ctx: MessageContext) -> None:
-        print(f"{'-'*80}\nExpert Recruiter analyzing problem:\n{message.content}")
+        print(f"{'-'*80}\nOrchestrator analyzing problem and creating ledgers:\n{message.content}")
+        
+        # Initialize ledgers
+        self._task_ledger = TaskLedger(question=message.content)
+        self._progress_ledger = ProgressLedger()
         
         # Notify callback that agent is thinking
         if self._callback:
-            self._callback.on_agent_thinking("ExpertRecruiter", 0)
+            self._callback.on_agent_thinking("Orchestrator", 0)
         
         # Perform web search to help with analysis
         search_results = await simple_search(message.content)
         
-        # Prepare prompt with search results
+        # Prepare comprehensive prompt for ledger creation and expert assignment
         prompt = (
-            f"Analyze this mathematical problem and decide which expert(s) should solve it:\n"
+            f"Analyze this mathematical problem and create/update the Task Ledger and Progress Ledger:\n"
             f"Problem: {message.content}\n\n"
             f"Additional context from research:\n{search_results}\n\n"
-            f"Based on your analysis, which expert(s) should handle this problem?"
+            f"Create a comprehensive task ledger breakdown and determine which expert(s) should handle this problem."
         )
         
-        # Add the question to history and get AI analysis
+        # Get AI analysis with ledger updates
         history = [UserMessage(content=prompt, source="user")]
         model_result = await self._model_client.create(self._system_messages + history)
         assert isinstance(model_result.content, str)
         
-        print(f"Expert Recruiter analysis:\n{model_result.content}")
+        print(f"Orchestrator analysis:\n{model_result.content}")
         
-        # Parse the response to extract assigned experts
+        # Update Task Ledger from analysis
+        self._task_ledger.update_from_analysis(model_result.content)
+        
+        # Parse progress analysis
+        progress_made = True
+        next_speaker = ""
+        speaker_instruction = ""
+        
+        lines = model_result.content.split('\n')
+        for line in lines:
+            if line.startswith("PROGRESS_MADE:"):
+                progress_made = "true" in line.lower()
+            elif line.startswith("NEXT_SPEAKER:"):
+                next_speaker = line.replace("NEXT_SPEAKER:", "").strip()
+            elif line.startswith("SPEAKER_INSTRUCTION:"):
+                speaker_instruction = line.replace("SPEAKER_INSTRUCTION:", "").strip()
+        
+        # Update Progress Ledger
+        self._progress_ledger.update_progress("Problem analyzed and ledgers created", progress_made)
+        self._progress_ledger.set_next_action(next_speaker, speaker_instruction)
+        
+        # Parse the expert assignment
         assigned_experts = []
         reasoning = ""
         
-        lines = model_result.content.split('\n')
         for line in lines:
             if line.startswith("ASSIGNED_EXPERTS:"):
                 expert_text = line.replace("ASSIGNED_EXPERTS:", "").strip()
@@ -235,10 +380,12 @@ class ExpertRecruiter(RoutedAgent):
         if not reasoning:
             reasoning = "General mathematical problem requiring expert analysis."
 
-        # Notify callback about expert assignment
+        # Notify callback about ledger updates
         if self._callback:
+            self._callback.on_task_ledger_update(self._task_ledger)
+            self._callback.on_progress_ledger_update(self._progress_ledger)
             self._callback.on_expert_assignment(assigned_experts, reasoning)
-            self._callback.on_agent_response("ExpertRecruiter", 0, model_result.content, f"Assigned: {', '.join(assigned_experts)}")
+            self._callback.on_agent_response("Orchestrator", 0, model_result.content, f"Assigned: {', '.join(assigned_experts)}")
         
         # Send assignment to experts
         assignment = ExpertAssignment(
@@ -248,6 +395,23 @@ class ExpertRecruiter(RoutedAgent):
         )
         
         await self.publish_message(assignment, topic_id=DefaultTopicId())
+
+    @message_handler
+    async def handle_expert_solution(self, message: ExpertSolution, ctx: MessageContext) -> None:
+        """Monitor expert solutions and update progress ledger"""
+        if self._progress_ledger:
+            step_completed = f"{message.expert_name} provided solution"
+            self._progress_ledger.update_progress(step_completed, True)
+            
+            # Check if we should continue or wrap up
+            if self._progress_ledger.check_stall():
+                self._progress_ledger.set_next_action("Evaluator", "Validate available solutions due to stall detection")
+            else:
+                self._progress_ledger.set_next_action("Evaluator", "Validate expert solutions")
+            
+            # Notify callback of progress update
+            if self._callback:
+                self._callback.on_progress_ledger_update(self._progress_ledger)
 
 
 @default_subscription  
@@ -380,7 +544,7 @@ class AlgebraExpert(RoutedAgent):
 
 @default_subscription
 class Evaluator(RoutedAgent):
-    """Evaluator that validates solutions from experts"""
+    """Evaluator that validates solutions from experts and determines task completion"""
     
     def __init__(self, model_client: ChatCompletionClient, callback: DebateCallback = None) -> None:
         super().__init__("Evaluator")
@@ -389,17 +553,22 @@ class Evaluator(RoutedAgent):
         self._solutions_buffer: List[ExpertSolution] = []
         self._expected_experts: List[str] = []
         self._current_question = ""
+        self._progress_ledger: Optional[ProgressLedger] = None
         
         self._system_messages = [
             SystemMessage(
                 content=(
-                    "You are an Evaluator (評価者) who verifies mathematical solutions and provides critical feedback. "
+                    "You are an Evaluator (評価者) who verifies mathematical solutions and determines task completion. "
                     "Your job is to check the accuracy and reasoning of solutions provided by expert agents. "
                     "Evaluate each solution for:\n"
                     "1. Mathematical accuracy - are the calculations correct?\n"
                     "2. Logical reasoning - does the approach make sense?\n"
                     "3. Completeness - is the solution thorough?\n"
                     "4. Consistency - do multiple solutions agree?\n\n"
+                    "You also help determine if the task is complete by checking:\n"
+                    "- Are all required solutions provided?\n"
+                    "- Are the solutions accurate and consistent?\n"
+                    "- Can a final answer be confidently provided?\n\n"
                     "Provide a final validated answer and explain your evaluation process. "
                     "Your final answer should be a single numerical number in the form of {{answer}}, at the end of your response."
                 )
@@ -412,6 +581,11 @@ class Evaluator(RoutedAgent):
         self._expected_experts = message.assigned_experts.copy()
         self._current_question = message.question
         self._solutions_buffer.clear()
+        
+        # Initialize progress tracking for evaluation phase
+        self._progress_ledger = ProgressLedger()
+        self._progress_ledger.set_next_action("Experts", f"Waiting for solutions from: {', '.join(self._expected_experts)}")
+        
         print(f"{'-'*80}\nEvaluator waiting for solutions from: {', '.join(self._expected_experts)}")
 
     @message_handler
@@ -419,6 +593,11 @@ class Evaluator(RoutedAgent):
         if message.expert_name in self._expected_experts:
             self._solutions_buffer.append(message)
             print(f"Evaluator received solution from {message.expert_name}")
+            
+            # Update progress
+            if self._progress_ledger:
+                step = f"Received solution from {message.expert_name}"
+                self._progress_ledger.update_progress(step, True)
             
             # Check if all expected solutions received
             received_experts = [sol.expert_name for sol in self._solutions_buffer]
@@ -433,6 +612,13 @@ class Evaluator(RoutedAgent):
             self._callback.on_evaluation_start()
             self._callback.on_agent_thinking("Evaluator", 2)
         
+        # Update progress ledger for evaluation start
+        if self._progress_ledger:
+            self._progress_ledger.update_progress("Starting solution evaluation", True)
+            self._progress_ledger.set_next_action("Evaluator", "Validating expert solutions")
+            if self._callback:
+                self._callback.on_progress_ledger_update(self._progress_ledger)
+        
         # Prepare evaluation prompt
         solutions_text = ""
         for i, solution in enumerate(self._solutions_buffer, 1):
@@ -443,7 +629,8 @@ class Evaluator(RoutedAgent):
             f"Problem: {self._current_question}\n"
             f"Expert Solutions:{solutions_text}\n\n"
             f"Provide your evaluation of each solution and determine the final validated answer. "
-            f"Check mathematical accuracy, reasoning quality, and consistency between solutions."
+            f"Check mathematical accuracy, reasoning quality, and consistency between solutions. "
+            f"Also determine if the task is now complete based on the quality and consistency of solutions."
         )
         
         history = [UserMessage(content=prompt, source="user")]
@@ -455,6 +642,14 @@ class Evaluator(RoutedAgent):
         # Extract final validated answer
         match = re.search(r"\{\{(\-?\d+(\.\d+)?)\}\}", model_result.content)
         final_answer = match.group(1) if match else "Evaluation incomplete"
+        
+        # Update progress ledger - task completion
+        if self._progress_ledger:
+            self._progress_ledger.task_complete = True
+            self._progress_ledger.update_progress("Task completed with validated answer", True)
+            self._progress_ledger.set_next_action("Complete", "Final answer provided")
+            if self._callback:
+                self._callback.on_progress_ledger_update(self._progress_ledger)
         
         # Notify callback
         if self._callback:
@@ -479,8 +674,8 @@ class MathAggregator(RoutedAgent):
         if self._callback:
             self._callback.on_debate_start(message.content)
         
-        print(f"{'-'*80}\nAggregator {self.id} forwards question to Expert Recruiter.")
-        # Forward question directly to Expert Recruiter instead of broadcasting
+        print(f"{'-'*80}\nAggregator {self.id} forwards question to Orchestrator.")
+        # Forward question directly to Orchestrator instead of broadcasting
         await self.publish_message(message, topic_id=DefaultTopicId())
 
     @message_handler

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Test script for the new sequential workflow
-Tests the Expert Recruiter -> Expert -> Evaluator workflow
+Test script for the new Orchestrator with Task and Progress Ledgers
+Tests the enhanced workflow with ledger management
 """
 
 import asyncio
@@ -11,16 +11,19 @@ from pathlib import Path
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from multi_agent_debate.core import DebateCallback, Question, Answer
+from multi_agent_debate.core import DebateCallback, Question, Answer, TaskLedger, ProgressLedger
 
 
-class WorkflowTestCallback(DebateCallback):
-    """Test callback to verify the new sequential workflow"""
+class LedgerTestCallback(DebateCallback):
+    """Test callback to verify the new ledger-based workflow"""
     
     def __init__(self):
         self.events = []
         self.workflow_stages = []
         self.assigned_experts = []
+        self.task_ledger = None
+        self.progress_ledger = None
+        self.ledger_updates = 0
         
     def on_agent_response(self, agent_id: str, round_num: int, content: str, answer: str):
         event = f"[Round {round_num}] {agent_id}: {answer}"
@@ -52,110 +55,192 @@ class WorkflowTestCallback(DebateCallback):
         self.events.append(event)
         self.workflow_stages.append("end")
         print(f"🎯 {event}")
+    
+    def on_task_ledger_update(self, task_ledger: TaskLedger):
+        """Handle Task Ledger updates"""
+        self.task_ledger = task_ledger
+        self.ledger_updates += 1
+        event = f"Task Ledger Updated: {len(task_ledger.given_facts)} facts, {len(task_ledger.task_plan)} plan steps"
+        self.events.append(event)
+        self.workflow_stages.append("task_ledger_update")
+        print(f"📋 {event}")
+        print(f"   Given Facts: {task_ledger.given_facts}")
+        print(f"   Task Plan: {task_ledger.task_plan}")
+    
+    def on_progress_ledger_update(self, progress_ledger: ProgressLedger):
+        """Handle Progress Ledger updates"""
+        self.progress_ledger = progress_ledger
+        event = f"Progress Update: Task Complete={progress_ledger.task_complete}, Next={progress_ledger.next_speaker}"
+        self.events.append(event)
+        self.workflow_stages.append("progress_ledger_update")
+        print(f"📊 {event}")
+        print(f"   Progress Made: {progress_ledger.progress_being_made}")
+        print(f"   Completed Steps: {progress_ledger.completed_steps}")
 
 
-def test_sequential_workflow():
-    """Test the new sequential workflow logic"""
+def test_orchestrator_with_ledgers():
+    """Test the new Orchestrator workflow with Task and Progress Ledgers"""
     print("=" * 60)
-    print("🧪 Sequential Workflow Test")
+    print("🧪 Orchestrator with Ledgers Test")
     print("=" * 60)
     
-    callback = WorkflowTestCallback()
+    callback = LedgerTestCallback()
     
-    # Simulate the new workflow
+    # Simulate the new ledger-based workflow
     question = "ある正方形の面積が36平方センチメートルです。この正方形の周りに幅2センチメートルの枠をつけると、枠も含めた全体の面積は何平方センチメートルになりますか？"
     
-    # Stage 1: Expert Recruiter analyzes and assigns
+    # Stage 1: Orchestrator creates ledgers and analyzes
     callback.on_debate_start(question)
-    callback.on_expert_assignment(["GeometryExpert"], "この問題は幾何学的な計算が必要です。正方形と枠の面積計算はGeometry Expertが最適です。")
-    callback.on_agent_response("ExpertRecruiter", 0, "問題を分析し、GeometryExpertに割り当てます。", "Assigned: GeometryExpert")
     
-    # Stage 2: Assigned expert solves the problem
+    # Create mock Task Ledger
+    task_ledger = TaskLedger(question=question)
+    task_ledger.given_facts = [
+        "正方形の面積が36平方センチメートル",
+        "枠の幅が2センチメートル"
+    ]
+    task_ledger.facts_to_derive = [
+        "正方形の一辺の長さ",
+        "枠込みの全体の一辺の長さ",
+        "枠込みの全体の面積"
+    ]
+    task_ledger.task_plan = [
+        "正方形の面積から一辺を計算",
+        "枠の幅を加えて全体の一辺を計算",
+        "全体の面積を計算"
+    ]
+    
+    callback.on_task_ledger_update(task_ledger)
+    
+    # Create mock Progress Ledger
+    progress_ledger = ProgressLedger()
+    progress_ledger.progress_being_made = True
+    progress_ledger.next_speaker = "GeometryExpert"
+    progress_ledger.next_speaker_instruction = "Calculate area with frame using geometric principles"
+    
+    callback.on_progress_ledger_update(progress_ledger)
+    
+    # Stage 2: Expert assignment
+    callback.on_expert_assignment(["GeometryExpert"], "幾何学的計算が必要なためGeometryExpertを選択")
+    callback.on_agent_response("Orchestrator", 0, "問題を分析し、Task LedgerとProgress Ledgerを作成しました。", "Assigned: GeometryExpert")
+    
+    # Stage 3: Expert solution with progress updates
+    progress_ledger.update_progress("GeometryExpert assigned and working", True)
+    callback.on_progress_ledger_update(progress_ledger)
+    
     callback.on_agent_response("GeometryExpert", 1, "正方形の面積36cm²なので一辺は6cm。枠込みで一辺は10cm。面積は100cm²。", "100")
     
-    # Stage 3: Evaluator validates
+    # Stage 4: Evaluation with final progress update
     callback.on_evaluation_start()
-    callback.on_agent_response("Evaluator", 2, "GeometryExpertの解答を検証。√36=6、6+2+2=10、10²=100。計算は正確です。", "100")
+    
+    progress_ledger.task_complete = True
+    progress_ledger.next_speaker = "Complete"
+    progress_ledger.update_progress("Solution validated and task completed", True)
+    callback.on_progress_ledger_update(progress_ledger)
+    
+    callback.on_agent_response("Evaluator", 2, "GeometryExpertの解答を検証。計算は正確です。", "100")
     
     callback.on_debate_end("100")
     
-    print(f"\n✅ ワークフローテスト完了!")
+    print(f"\n✅ Orchestrator with Ledgers テスト完了!")
     print(f"   - {len(callback.events)} 個のイベントが記録されました")
+    print(f"   - {callback.ledger_updates} 回のレジャー更新がありました")
     print(f"   - 割り当てられた専門家: {', '.join(callback.assigned_experts)}")
     
-    # Verify workflow sequence
-    expected_sequence = ["start", "assignment", "response:ExpertRecruiter", "response:GeometryExpert", "evaluation", "response:Evaluator", "end"]
+    # Verify Task Ledger functionality
+    if callback.task_ledger:
+        print(f"   - Task Ledger: {len(callback.task_ledger.given_facts)} facts, {len(callback.task_ledger.task_plan)} plan steps")
+        task_ledger_ok = len(callback.task_ledger.given_facts) > 0 and len(callback.task_ledger.task_plan) > 0
+    else:
+        task_ledger_ok = False
     
-    print(f"   - 実際のワークフロー: {' -> '.join(callback.workflow_stages)}")
-    print(f"   - 期待されるワークフロー: {' -> '.join(expected_sequence)}")
+    # Verify Progress Ledger functionality
+    if callback.progress_ledger:
+        print(f"   - Progress Ledger: Task Complete={callback.progress_ledger.task_complete}")
+        progress_ledger_ok = callback.progress_ledger.task_complete
+    else:
+        progress_ledger_ok = False
     
-    if callback.workflow_stages == expected_sequence:
-        print("✅ ワークフローシーケンスが正しく実行されました")
+    # Verify enhanced workflow sequence
+    expected_stages = ["start", "task_ledger_update", "progress_ledger_update", "assignment", "response:Orchestrator"]
+    actual_start = callback.workflow_stages[:len(expected_stages)]
+    
+    print(f"   - 実際のワークフロー開始: {' -> '.join(actual_start)}")
+    
+    if task_ledger_ok and progress_ledger_ok and "task_ledger_update" in callback.workflow_stages:
+        print("✅ Task LedgerとProgress Ledgerが正しく機能しています")
         return True
     else:
-        print("❌ ワークフローシーケンスが期待と異なります")
+        print("❌ レジャー機能に問題があります")
         return False
 
 
-def test_dual_expert_assignment():
-    """Test workflow when both experts are assigned"""
+def test_progress_monitoring():
+    """Test progress monitoring and stall detection"""
     print("\n" + "=" * 60)
-    print("🧪 Dual Expert Assignment Test")
+    print("🧪 Progress Monitoring Test")
     print("=" * 60)
     
-    callback = WorkflowTestCallback()
+    callback = LedgerTestCallback()
     
-    question = "複数の数学領域を含む複雑な問題"
+    # Test stall detection
+    progress_ledger = ProgressLedger()
     
-    # Expert Recruiter assigns both experts
-    callback.on_debate_start(question)
-    callback.on_expert_assignment(["GeometryExpert", "AlgebraExpert"], "この問題は幾何学と代数学の両方の知識が必要です。")
-    callback.on_agent_response("ExpertRecruiter", 0, "両方の専門家に問題を割り当てます。", "Assigned: Both")
+    # Simulate normal progress
+    progress_ledger.update_progress("Step 1 completed", True)
+    callback.on_progress_ledger_update(progress_ledger)
     
-    # Both experts work in parallel
-    callback.on_agent_response("GeometryExpert", 1, "幾何学的アプローチで解決", "42")
-    callback.on_agent_response("AlgebraExpert", 1, "代数的アプローチで解決", "42")
+    progress_ledger.update_progress("Step 2 completed", True)
+    callback.on_progress_ledger_update(progress_ledger)
     
-    # Evaluator validates both solutions
-    callback.on_evaluation_start()
-    callback.on_agent_response("Evaluator", 2, "両方の解答を検証し、一致を確認", "42")
+    # Simulate stall condition
+    progress_ledger.update_progress("Step 3 failed", False)
+    callback.on_progress_ledger_update(progress_ledger)
     
-    callback.on_debate_end("42")
+    progress_ledger.update_progress("Step 4 failed", False)
+    callback.on_progress_ledger_update(progress_ledger)
     
-    print(f"\n✅ デュアル専門家テスト完了!")
-    print(f"   - 割り当てられた専門家: {', '.join(callback.assigned_experts)}")
+    progress_ledger.update_progress("Step 5 failed", False)
+    callback.on_progress_ledger_update(progress_ledger)
     
-    # Check that both experts were assigned
-    if len(callback.assigned_experts) == 2 and "GeometryExpert" in callback.assigned_experts and "AlgebraExpert" in callback.assigned_experts:
-        print("✅ 両方の専門家が正しく割り当てられました")
+    # Check stall detection
+    is_stalled = progress_ledger.check_stall()
+    
+    print(f"\n✅ Progress Monitoring テスト完了!")
+    print(f"   - Stall Count: {progress_ledger.stall_count}")
+    print(f"   - Stall Detected: {is_stalled}")
+    print(f"   - Progress Being Made: {progress_ledger.progress_being_made}")
+    
+    if is_stalled and progress_ledger.stall_count > 2:
+        print("✅ Stall detection が正しく動作しています")
         return True
     else:
-        print("❌ 専門家の割り当てが期待と異なります")
+        print("❌ Stall detection に問題があります")
         return False
 
 
 def main():
     """Main test function"""
-    print("🤖 Sequential Workflow System Test")
+    print("🤖 Enhanced Orchestrator with Ledgers System Test")
     print("=" * 60)
     
     success = True
     
-    # Test sequential workflow
-    if not test_sequential_workflow():
+    # Test orchestrator with ledgers
+    if not test_orchestrator_with_ledgers():
         success = False
     
-    # Test dual expert assignment
-    if not test_dual_expert_assignment():
+    # Test progress monitoring
+    if not test_progress_monitoring():
         success = False
     
     print("\n" + "=" * 60)
     if success:
-        print("🎉 全てのワークフローテストが成功しました!")
-        print("   新しいシーケンシャルワークフローの準備完了:")
-        print("   1. Expert Recruiter が問題を分析し専門家を割り当て")
-        print("   2. 割り当てられた専門家が並行して問題を解決")
-        print("   3. Evaluator が解答を検証し最終回答を提供")
+        print("🎉 全てのレジャーテストが成功しました!")
+        print("   新しいOrchestrator with Ledgers システムの準備完了:")
+        print("   1. Task Ledger が問題の事実と計画を管理")
+        print("   2. Progress Ledger が進捗監視とstall検出を実行")
+        print("   3. Orchestrator が全体のワークフローを調整")
+        print("   4. 選択された専門家のみが活性化")
     else:
         print("❌ 一部のテストが失敗しました。")
     

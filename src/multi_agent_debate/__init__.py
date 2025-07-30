@@ -1,11 +1,12 @@
 from .core import (
-    ExpertRecruiter, GeometryExpert, AlgebraExpert, Evaluator, MathAggregator,
-    Question, Answer, ExpertAssignment, ExpertSolution, EvaluationRequest, DebateCallback
+    Orchestrator, GeometryExpert, AlgebraExpert, Evaluator, MathAggregator,
+    Question, Answer, ExpertAssignment, ExpertSolution, EvaluationRequest, DebateCallback,
+    TaskLedger, ProgressLedger
 )
 from .manager import DebateManager
 
 __all__ = [
-    "ExpertRecruiter",
+    "Orchestrator",
     "GeometryExpert", 
     "AlgebraExpert",
     "Evaluator",
@@ -16,5 +17,7 @@ __all__ = [
     "ExpertSolution", 
     "EvaluationRequest",
     "DebateCallback",
+    "TaskLedger",
+    "ProgressLedger",
     "DebateManager"
 ]

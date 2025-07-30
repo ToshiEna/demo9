@@ -102,6 +102,41 @@ class WebSocketCallback(DebateCallback):
         debate_history.append(message)
         asyncio.create_task(broadcast_message(message))
 
+    def on_task_ledger_update(self, task_ledger):
+        """Handle Task Ledger updates"""
+        message = {
+            "type": "task_ledger_update",
+            "task_ledger": {
+                "question": task_ledger.question,
+                "given_facts": task_ledger.given_facts,
+                "facts_to_lookup": task_ledger.facts_to_lookup,
+                "facts_to_derive": task_ledger.facts_to_derive,
+                "educated_guesses": task_ledger.educated_guesses,
+                "task_plan": task_ledger.task_plan
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+        debate_history.append(message)
+        asyncio.create_task(broadcast_message(message))
+    
+    def on_progress_ledger_update(self, progress_ledger):
+        """Handle Progress Ledger updates"""
+        message = {
+            "type": "progress_ledger_update", 
+            "progress_ledger": {
+                "task_complete": progress_ledger.task_complete,
+                "unproductive_loops": progress_ledger.unproductive_loops,
+                "progress_being_made": progress_ledger.progress_being_made,
+                "next_speaker": progress_ledger.next_speaker,
+                "next_speaker_instruction": progress_ledger.next_speaker_instruction,
+                "stall_count": progress_ledger.stall_count,
+                "completed_steps": progress_ledger.completed_steps
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+        debate_history.append(message)
+        asyncio.create_task(broadcast_message(message))
+
 
 async def broadcast_message(message: Dict):
     """全ての接続されたクライアントにメッセージをブロードキャスト"""
