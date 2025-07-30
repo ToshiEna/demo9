@@ -47,7 +47,6 @@ class IntermediateSolverResponse:
     content: str
     question: str
     answer: str
-    round: int
 
 
 @dataclass
@@ -170,11 +169,11 @@ class ProgressLedger:
 
 
 class DebateCallback:
-    def on_agent_response(self, agent_id: str, round_num: int, content: str, answer: str):
+    def on_agent_response(self, agent_id: str, content: str, answer: str):
         """Called when an agent provides a response"""
         pass
     
-    def on_agent_thinking(self, agent_id: str, round_num: int):
+    def on_agent_thinking(self, agent_id: str):
         """Called when an agent starts thinking"""
         pass
     
@@ -185,13 +184,9 @@ class DebateCallback:
     def on_debate_end(self, final_answer: str):
         """Called when debate ends"""
         pass
-    
-    def on_round_complete(self, round_num: int):
-        """Called when a round is complete"""
-        pass
 
     def on_expert_assignment(self, assigned_experts: List[str], reasoning: str):
-        """Called when Expert Recruiter assigns experts"""
+        """Called when Orchestrator assigns experts"""
         pass
     
     def on_evaluation_start(self):
@@ -204,6 +199,10 @@ class DebateCallback:
     
     def on_progress_ledger_update(self, progress_ledger: ProgressLedger):
         """Called when Progress Ledger is updated"""
+        pass
+
+    def on_task_delegation(self, from_agent: str, to_agents: List[str], instruction: str):
+        """Called when Orchestrator delegates tasks to experts"""
         pass
 
 
@@ -315,7 +314,7 @@ class Orchestrator(RoutedAgent):
         
         # Notify callback that agent is thinking
         if self._callback:
-            self._callback.on_agent_thinking("Orchestrator", 0)
+            self._callback.on_agent_thinking("Orchestrator")
         
         # Perform web search to help with analysis
         search_results = await simple_search(message.content)
@@ -385,7 +384,9 @@ class Orchestrator(RoutedAgent):
             self._callback.on_task_ledger_update(self._task_ledger)
             self._callback.on_progress_ledger_update(self._progress_ledger)
             self._callback.on_expert_assignment(assigned_experts, reasoning)
-            self._callback.on_agent_response("Orchestrator", 0, model_result.content, f"Assigned: {', '.join(assigned_experts)}")
+            self._callback.on_agent_response("Orchestrator", model_result.content, f"Assigned: {', '.join(assigned_experts)}")
+            # Notify about task delegation with visual flow
+            self._callback.on_task_delegation("Orchestrator", assigned_experts, f"Solve the problem: {message.content}")
         
         # Send assignment to experts
         assignment = ExpertAssignment(
@@ -444,7 +445,7 @@ class GeometryExpert(RoutedAgent):
         
         # Notify callback that agent is thinking
         if self._callback:
-            self._callback.on_agent_thinking("GeometryExpert", 1)
+            self._callback.on_agent_thinking("GeometryExpert")
         
         prompt = (
             f"As a Geometry Expert, solve this mathematical problem using geometric principles:\n"
@@ -465,7 +466,7 @@ class GeometryExpert(RoutedAgent):
         
         # Notify callback
         if self._callback:
-            self._callback.on_agent_response("GeometryExpert", 1, model_result.content, answer)
+            self._callback.on_agent_response("GeometryExpert", model_result.content, answer)
         
         # Send solution
         solution = ExpertSolution(
@@ -508,7 +509,7 @@ class AlgebraExpert(RoutedAgent):
         
         # Notify callback that agent is thinking  
         if self._callback:
-            self._callback.on_agent_thinking("AlgebraExpert", 1)
+            self._callback.on_agent_thinking("AlgebraExpert")
         
         prompt = (
             f"As an Algebra Expert, solve this mathematical problem using algebraic methods:\n"
@@ -529,7 +530,7 @@ class AlgebraExpert(RoutedAgent):
         
         # Notify callback
         if self._callback:
-            self._callback.on_agent_response("AlgebraExpert", 1, model_result.content, answer)
+            self._callback.on_agent_response("AlgebraExpert", model_result.content, answer)
         
         # Send solution
         solution = ExpertSolution(
@@ -610,7 +611,7 @@ class Evaluator(RoutedAgent):
         # Notify callback that evaluation is starting
         if self._callback:
             self._callback.on_evaluation_start()
-            self._callback.on_agent_thinking("Evaluator", 2)
+            self._callback.on_agent_thinking("Evaluator")
         
         # Update progress ledger for evaluation start
         if self._progress_ledger:
@@ -653,7 +654,7 @@ class Evaluator(RoutedAgent):
         
         # Notify callback
         if self._callback:
-            self._callback.on_agent_response("Evaluator", 2, model_result.content, final_answer)
+            self._callback.on_agent_response("Evaluator", model_result.content, final_answer)
             self._callback.on_debate_end(final_answer)
         
         # Publish final answer
