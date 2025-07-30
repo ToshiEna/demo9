@@ -12,8 +12,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from multi_agent_debate.core import (
-    ExpertRecruiter, GeometryExpert, AlgebraExpert, Evaluator, MathAggregator,
-    Question, ExpertAssignment, ExpertSolution, EvaluationRequest, DebateCallback
+    Orchestrator, GeometryExpert, AlgebraExpert, Evaluator, MathAggregator,
+    Question, ExpertAssignment, ExpertSolution, EvaluationRequest, DebateCallback,
+    TaskLedger, ProgressLedger
 )
 
 
@@ -45,6 +46,14 @@ class IntegrationTestCallback(DebateCallback):
         self.events.append(f"END: {final_answer}")
         self.workflow_complete = True
         print(f"🎯 最終回答: {final_answer}")
+    
+    def on_task_ledger_update(self, task_ledger: TaskLedger):
+        self.events.append("TASK_LEDGER_UPDATE")
+        print(f"📋 Task Ledger更新: {len(task_ledger.given_facts)} facts")
+    
+    def on_progress_ledger_update(self, progress_ledger: ProgressLedger):
+        self.events.append("PROGRESS_LEDGER_UPDATE")
+        print(f"📊 Progress Ledger更新: 完了={progress_ledger.task_complete}")
 
 
 def test_message_flow_integration():
@@ -93,7 +102,7 @@ def test_agent_role_definitions():
     
     # Test role configurations
     roles = {
-        "ExpertRecruiter": "Expert Recruiter (専門家採用担当者)",
+        "Orchestrator": "Orchestrator (指揮者)",
         "GeometryExpert": "Geometry Expert (幾何学専門家)",
         "AlgebraExpert": "Algebra Expert (代数学専門家)",
         "Evaluator": "Evaluator (評価者)"

@@ -58,9 +58,9 @@
 
                 <!-- エージェント議論エリア -->
                 <div class="agents-container">
-                    <div class="agent-card" id="agentExpertRecruiter">
-                        <h3>🎯 Expert Recruiter</h3>
-                        <p class="agent-role">専門家採用担当者</p>
+                    <div class="agent-card" id="agentOrchestrator">
+                        <h3>🎯 Orchestrator</h3>
+                        <p class="agent-role">指揮者 (Task & Progress Ledger管理)</p>
                         <div class="agent-status">待機中</div>
                         <div class="agent-responses"></div>
                         <div class="thinking-indicator" style="display: none;">
@@ -112,6 +112,65 @@
                                 <span></span>
                             </div>
                             <span class="thinking-text">評価中...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Ledger Display Section -->
+                <div class="ledgers-container">
+                    <div class="ledger-section">
+                        <h3>📋 Task Ledger</h3>
+                        <div id="taskLedger" class="ledger-content">
+                            <div class="ledger-item">
+                                <strong>与えられた事実:</strong>
+                                <ul id="givenFacts" class="ledger-list"></ul>
+                            </div>
+                            <div class="ledger-item">
+                                <strong>調査が必要な事実:</strong>
+                                <ul id="factsToLookup" class="ledger-list"></ul>
+                            </div>
+                            <div class="ledger-item">
+                                <strong>導出が必要な事実:</strong>
+                                <ul id="factsToDerive" class="ledger-list"></ul>
+                            </div>
+                            <div class="ledger-item">
+                                <strong>推測:</strong>
+                                <ul id="educatedGuesses" class="ledger-list"></ul>
+                            </div>
+                            <div class="ledger-item">
+                                <strong>タスク計画:</strong>
+                                <ol id="taskPlan" class="ledger-list"></ol>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="ledger-section">
+                        <h3>📊 Progress Ledger</h3>
+                        <div id="progressLedger" class="ledger-content">
+                            <div class="progress-item">
+                                <strong>タスク完了:</strong>
+                                <span id="taskComplete" class="status-indicator">未完了</span>
+                            </div>
+                            <div class="progress-item">
+                                <strong>進捗状況:</strong>
+                                <span id="progressBeingMade" class="status-indicator">-</span>
+                            </div>
+                            <div class="progress-item">
+                                <strong>ストール回数:</strong>
+                                <span id="stallCount" class="counter">0</span>
+                            </div>
+                            <div class="progress-item">
+                                <strong>次の担当者:</strong>
+                                <span id="nextSpeaker" class="next-speaker">-</span>
+                            </div>
+                            <div class="progress-item">
+                                <strong>指示:</strong>
+                                <div id="nextSpeakerInstruction" class="instruction">-</div>
+                            </div>
+                            <div class="progress-item">
+                                <strong>完了したステップ:</strong>
+                                <ol id="completedSteps" class="ledger-list"></ol>
+                            </div>
                         </div>
                     </div>
                 </div>
