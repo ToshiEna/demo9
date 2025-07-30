@@ -34,11 +34,10 @@ class QuestionRequest(BaseModel):
 class WebSocketCallback(DebateCallback):
     """WebSocket用のコールバック実装"""
     
-    def on_agent_response(self, agent_id: str, round_num: int, content: str, answer: str):
+    def on_agent_response(self, agent_id: str, content: str, answer: str):
         message = {
             "type": "agent_response",
             "agent_id": str(agent_id),  # Convert AgentId to string for JSON serialization
-            "round": round_num,
             "content": content,
             "answer": answer,
             "timestamp": datetime.now().isoformat()
@@ -46,11 +45,10 @@ class WebSocketCallback(DebateCallback):
         debate_history.append(message)
         asyncio.create_task(broadcast_message(message))
     
-    def on_agent_thinking(self, agent_id: str, round_num: int):
+    def on_agent_thinking(self, agent_id: str):
         message = {
             "type": "agent_thinking",
             "agent_id": str(agent_id),
-            "round": round_num,
             "timestamp": datetime.now().isoformat()
         }
         debate_history.append(message)
@@ -70,15 +68,6 @@ class WebSocketCallback(DebateCallback):
         message = {
             "type": "debate_end",
             "final_answer": final_answer,
-            "timestamp": datetime.now().isoformat()
-        }
-        debate_history.append(message)
-        asyncio.create_task(broadcast_message(message))
-    
-    def on_round_complete(self, round_num: int):
-        message = {
-            "type": "round_complete",
-            "round": round_num,
             "timestamp": datetime.now().isoformat()
         }
         debate_history.append(message)
@@ -132,6 +121,18 @@ class WebSocketCallback(DebateCallback):
                 "stall_count": progress_ledger.stall_count,
                 "completed_steps": progress_ledger.completed_steps
             },
+            "timestamp": datetime.now().isoformat()
+        }
+        debate_history.append(message)
+        asyncio.create_task(broadcast_message(message))
+
+    def on_task_delegation(self, from_agent: str, to_agents: List[str], instruction: str):
+        """Handle task delegation for visual flow"""
+        message = {
+            "type": "task_delegation",
+            "from_agent": from_agent,
+            "to_agents": to_agents,
+            "instruction": instruction,
             "timestamp": datetime.now().isoformat()
         }
         debate_history.append(message)

@@ -58,61 +58,75 @@
 
                 <!-- エージェント議論エリア -->
                 <div class="agents-container">
-                    <div class="agent-card" id="agentOrchestrator">
-                        <h3>🎯 Orchestrator</h3>
-                        <p class="agent-role">指揮者 (Task & Progress Ledger管理)</p>
-                        <div class="agent-status">待機中</div>
-                        <div class="agent-responses"></div>
-                        <div class="thinking-indicator" style="display: none;">
-                            <div class="thinking-dots">
-                                <span></span>
-                                <span></span>
-                                <span></span>
+                    <!-- Orchestrator Section (Top) -->
+                    <div class="orchestrator-section">
+                        <div class="agent-card" id="agentOrchestrator">
+                            <h3>🎯 Orchestrator</h3>
+                            <p class="agent-role">指揮者 (Task & Progress Ledger管理)</p>
+                            <div class="agent-status">待機中</div>
+                            <div class="agent-responses"></div>
+                            <div class="thinking-indicator" style="display: none;">
+                                <div class="thinking-dots">
+                                    <span></span>
+                                    <span></span>
+                                    <span></span>
+                                </div>
+                                <span class="thinking-text">分析中...</span>
                             </div>
-                            <span class="thinking-text">分析中...</span>
                         </div>
                     </div>
-                    <div class="agent-card" id="agentGeometryExpert">
-                        <h3>📐 Geometry Expert</h3>
-                        <p class="agent-role">幾何学専門家</p>
-                        <div class="agent-status">待機中</div>
-                        <div class="agent-responses"></div>
-                        <div class="thinking-indicator" style="display: none;">
-                            <div class="thinking-dots">
-                                <span></span>
-                                <span></span>
-                                <span></span>
+
+                    <!-- Experts Section (Bottom) -->
+                    <div class="experts-section">
+                        <div class="agent-card" id="agentGeometryExpert">
+                            <h3>📐 Geometry Expert</h3>
+                            <p class="agent-role">幾何学専門家</p>
+                            <div class="agent-status">待機中</div>
+                            <div class="agent-responses"></div>
+                            <div class="thinking-indicator" style="display: none;">
+                                <div class="thinking-dots">
+                                    <span></span>
+                                    <span></span>
+                                    <span></span>
+                                </div>
+                                <span class="thinking-text">幾何学的分析中...</span>
                             </div>
-                            <span class="thinking-text">幾何学的分析中...</span>
+                        </div>
+                        <div class="agent-card" id="agentAlgebraExpert">
+                            <h3>🔢 Algebra Expert</h3>
+                            <p class="agent-role">代数学専門家</p>
+                            <div class="agent-status">待機中</div>
+                            <div class="agent-responses"></div>
+                            <div class="thinking-indicator" style="display: none;">
+                                <div class="thinking-dots">
+                                    <span></span>
+                                    <span></span>
+                                    <span></span>
+                                </div>
+                                <span class="thinking-text">代数的分析中...</span>
+                            </div>
+                        </div>
+                        <div class="agent-card" id="agentEvaluator">
+                            <h3>✅ Evaluator</h3>
+                            <p class="agent-role">評価者</p>
+                            <div class="agent-status">待機中</div>
+                            <div class="agent-responses"></div>
+                            <div class="thinking-indicator" style="display: none;">
+                                <div class="thinking-dots">
+                                    <span></span>
+                                    <span></span>
+                                    <span></span>
+                                </div>
+                                <span class="thinking-text">評価中...</span>
+                            </div>
                         </div>
                     </div>
-                    <div class="agent-card" id="agentAlgebraExpert">
-                        <h3>🔢 Algebra Expert</h3>
-                        <p class="agent-role">代数学専門家</p>
-                        <div class="agent-status">待機中</div>
-                        <div class="agent-responses"></div>
-                        <div class="thinking-indicator" style="display: none;">
-                            <div class="thinking-dots">
-                                <span></span>
-                                <span></span>
-                                <span></span>
-                            </div>
-                            <span class="thinking-text">代数的分析中...</span>
-                        </div>
-                    </div>
-                    <div class="agent-card" id="agentEvaluator">
-                        <h3>✅ Evaluator</h3>
-                        <p class="agent-role">評価者</p>
-                        <div class="agent-status">待機中</div>
-                        <div class="agent-responses"></div>
-                        <div class="thinking-indicator" style="display: none;">
-                            <div class="thinking-dots">
-                                <span></span>
-                                <span></span>
-                                <span></span>
-                            </div>
-                            <span class="thinking-text">評価中...</span>
-                        </div>
+
+                    <!-- Task delegation visual connections -->
+                    <div class="task-delegation-container">
+                        <div class="connection-line" id="orchestratorToGeometry"></div>
+                        <div class="connection-line" id="orchestratorToAlgebra"></div>
+                        <div class="connection-line" id="orchestratorToEvaluator"></div>
                     </div>
                 </div>
 
@@ -175,10 +189,19 @@
                     </div>
                 </div>
 
-                <!-- ラウンド進行表示 -->
-                <div class="rounds-container">
-                    <h3>📊 ラウンド進行</h3>
-                    <div id="roundsProgress"></div>
+                <!-- Execution Progress Display -->
+                <div class="execution-progress">
+                    <h3>🔄 実行状況</h3>
+                    <div id="executionStatus" class="execution-status">
+                        <div class="status-item">
+                            <strong>現在のステップ:</strong>
+                            <span id="currentStep">待機中</span>
+                        </div>
+                        <div class="status-item">
+                            <strong>実行状態:</strong>
+                            <span id="executionState" class="state-indicator">準備完了</span>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- 最終結果 -->

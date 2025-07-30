@@ -1,7 +1,6 @@
 // WebSocket connection
 let ws = null;
-let currentRound = 0;
-let maxRounds = 3;
+let executionInProgress = false;
 
 // DOM elements
 const questionInput = document.getElementById('questionInput');
@@ -12,7 +11,9 @@ const questionText = document.getElementById('questionText');
 const finalResult = document.getElementById('finalResult');
 const finalAnswer = document.getElementById('finalAnswer');
 const debateLog = document.getElementById('debateLog');
-const roundsProgress = document.getElementById('roundsProgress');
+const executionStatus = document.getElementById('executionStatus');
+const currentStep = document.getElementById('currentStep');
+const executionState = document.getElementById('executionState');
 
 // Initialize WebSocket connection
 function initWebSocket() {
@@ -77,9 +78,6 @@ function handleMessage(message) {
         case 'evaluation_start':
             handleEvaluationStart(message);
             break;
-        case 'round_complete':
-            handleRoundComplete(message);
-            break;
         case 'debate_end':
             handleDebateEnd(message);
             break;
@@ -88,6 +86,9 @@ function handleMessage(message) {
             break;
         case 'progress_ledger_update':
             handleProgressLedgerUpdate(message);
+            break;
+        case 'task_delegation':
+            handleTaskDelegation(message);
             break;
         case 'error':
             handleError(message);
@@ -107,6 +108,7 @@ function updateStatus(type, message) {
 // Handle debate start
 function handleDebateStart(message) {
     updateStatus('running', '協調推論実行中...');
+    executionInProgress = true;
     questionText.textContent = message.question;
     currentQuestion.style.display = 'block';
     finalResult.style.display = 'none';
@@ -114,12 +116,11 @@ function handleDebateStart(message) {
     // Clear previous results
     clearAgentResponses();
     clearLedgers();
-    currentRound = 0;
-    initializeRoundsProgress();
+    updateExecutionStep('問題分析開始');
     
-    // Set all agents to thinking state
+    // Reset all agents to waiting state
     document.querySelectorAll('.agent-card').forEach(card => {
-        setAgentState(card, 'thinking');
+        setAgentState(card, 'waiting');
     });
     
     solveButton.disabled = true;
@@ -155,12 +156,16 @@ function handleAgentResponse(message) {
     // Map agent IDs to HTML element IDs
     if (agentId.includes('orchestrator')) {
         agentElement = document.getElementById('agentOrchestrator');
+        updateExecutionStep('Orchestrator による問題分析完了');
     } else if (agentId.includes('geometryexpert')) {
         agentElement = document.getElementById('agentGeometryExpert');
+        updateExecutionStep('Geometry Expert による解答完了');
     } else if (agentId.includes('algebraexpert')) {
         agentElement = document.getElementById('agentAlgebraExpert');
+        updateExecutionStep('Algebra Expert による解答完了');
     } else if (agentId.includes('evaluator')) {
         agentElement = document.getElementById('agentEvaluator');
+        updateExecutionStep('Evaluator による検証完了');
     }
     
     if (agentElement) {
@@ -173,17 +178,13 @@ function handleAgentResponse(message) {
         responseElement.className = 'agent-response';
         
         responseElement.innerHTML = `
-            <div class="response-meta">ラウンド ${message.round}</div>
             <div class="response-content">${message.content}</div>
             <div class="response-answer">回答: ${message.answer}</div>
         `;
         
         responsesContainer.appendChild(responseElement);
         
-        // Update round progress
-        updateRoundProgress(message.round);
-        
-        // After a delay, set agent to completed state for this round
+        // After a delay, set agent to completed state
         setTimeout(() => {
             setAgentState(agentElement, 'completed');
         }, 2000);
@@ -194,19 +195,62 @@ function handleAgentResponse(message) {
 function handleExpertAssignment(message) {
     // Update status to show expert assignment
     updateStatus('running', `専門家を割り当て中: ${message.assigned_experts.join(', ')}`);
+    updateExecutionStep('専門家への タスク割り当て完了');
     
     // Highlight assigned experts
-    const allAgents = ['Orchestrator', 'GeometryExpert', 'AlgebraExpert', 'Evaluator'];
+    const allAgents = ['GeometryExpert', 'AlgebraExpert', 'Evaluator'];
     allAgents.forEach(agentName => {
         const element = document.getElementById(`agent${agentName}`);
         if (element) {
             if (message.assigned_experts.includes(agentName)) {
                 element.classList.add('assigned');
-                setAgentState(element, 'thinking');
+                element.classList.add('expert-receiving');
+                setTimeout(() => element.classList.remove('expert-receiving'), 3000);
             } else {
                 element.classList.remove('assigned');
-                setAgentState(element, 'waiting');
             }
+        }
+    });
+}
+
+// Handle task delegation (new function for visual flow)
+function handleTaskDelegation(message) {
+    console.log('Task delegation:', message);
+    
+    // Show Orchestrator is delegating
+    const orchestratorElement = document.getElementById('agentOrchestrator');
+    if (orchestratorElement) {
+        orchestratorElement.classList.add('orchestrator-flow', 'delegating');
+        setTimeout(() => {
+            orchestratorElement.classList.remove('delegating');
+        }, 3000);
+    }
+    
+    // Show visual arrows to assigned experts
+    message.to_agents.forEach((agentName, index) => {
+        setTimeout(() => {
+            showDelegationArrow(agentName);
+            
+            // Highlight receiving expert
+            const expertElement = document.getElementById(`agent${agentName}`);
+            if (expertElement) {
+                expertElement.classList.add('expert-receiving');
+                setTimeout(() => expertElement.classList.remove('expert-receiving'), 2000);
+            }
+        }, index * 500); // Stagger the arrows
+    });
+    
+    updateExecutionStep(`タスク指示: ${message.to_agents.join(', ')}`);
+}
+
+// Show delegation arrow animation
+function showDelegationArrow(targetAgent) {
+    // This is a simplified version - in a real implementation you'd calculate positions
+    const connectionLines = document.querySelectorAll('.connection-line');
+    connectionLines.forEach((line, index) => {
+        if (index < 3) { // We have 3 connection lines
+            line.classList.add('active');
+            setTimeout(() => line.classList.remove('active'), 2000);
         }
     });
 }
@@ -214,6 +258,7 @@ function handleExpertAssignment(message) {
 // Handle evaluation start
 function handleEvaluationStart(message) {
     updateStatus('running', '評価者が解答を検証中...');
+    updateExecutionStep('Evaluator による検証開始');
     
     // Set Evaluator to thinking state
     const evaluatorElement = document.getElementById('agentEvaluator');
@@ -222,24 +267,11 @@ function handleEvaluationStart(message) {
     }
 }
 
-// Handle round completion
-function handleRoundComplete(message) {
-    // Mark round as completed
-    markRoundCompleted(message.round);
-    
-    // Set all agents back to thinking for next round (if not final round)
-    if (message.round < maxRounds) {
-        setTimeout(() => {
-            document.querySelectorAll('.agent-card').forEach(card => {
-                setAgentState(card, 'thinking');
-            });
-        }, 1000);
-    }
-}
-
 // Handle debate end
 function handleDebateEnd(message) {
     updateStatus('completed', '協調推論完了！');
+    updateExecutionStep('実行完了');
+    executionInProgress = false;
     finalAnswer.textContent = message.final_answer;
     finalResult.style.display = 'block';
     
@@ -368,6 +400,23 @@ function handleError(message) {
     });
 }
 
+// Update execution step
+function updateExecutionStep(step) {
+    if (currentStep) {
+        currentStep.textContent = step;
+    }
+    
+    if (executionState) {
+        if (executionInProgress) {
+            executionState.textContent = '実行中';
+            executionState.className = 'state-indicator running';
+        } else {
+            executionState.textContent = '完了';
+            executionState.className = 'state-indicator completed';
+        }
+    }
+}
+
 // Clear agent responses
 function clearAgentResponses() {
     document.querySelectorAll('.agent-responses').forEach(container => {
@@ -411,34 +460,6 @@ function setAgentState(agentElement, state) {
     }
 }
 
-// Initialize rounds progress
-function initializeRoundsProgress() {
-    roundsProgress.innerHTML = '';
-    for (let i = 1; i <= maxRounds; i++) {
-        const roundElement = document.createElement('div');
-        roundElement.className = 'round-indicator pending';
-        roundElement.textContent = i;
-        roundElement.id = `round-${i}`;
-        roundsProgress.appendChild(roundElement);
-    }
-}
-
-// Update round progress
-function updateRoundProgress(round) {
-    const roundElement = document.getElementById(`round-${round}`);
-    if (roundElement) {
-        roundElement.className = 'round-indicator active';
-    }
-}
-
-// Mark round as completed
-function markRoundCompleted(round) {
-    const roundElement = document.getElementById(`round-${round}`);
-    if (roundElement) {
-        roundElement.className = 'round-indicator completed';
-    }
-}
-
 // Add log entry
 function addLogEntry(message) {
     const logEntry = document.createElement('div');
@@ -452,13 +473,16 @@ function addLogEntry(message) {
             content = `協調推論開始: ${message.question}`;
             break;
         case 'agent_thinking':
-            content = `${getFriendlyAgentName(message.agent_id)} が分析中... (ラウンド${message.round})`;
+            content = `${getFriendlyAgentName(message.agent_id)} が分析中...`;
             break;
         case 'agent_response':
-            content = `${getFriendlyAgentName(message.agent_id)} (ラウンド${message.round}): ${message.answer}`;
+            content = `${getFriendlyAgentName(message.agent_id)}: ${message.answer}`;
             break;
         case 'expert_assignment':
             content = `Orchestratorが専門家を割り当て: ${message.assigned_experts.join(', ')} - 理由: ${message.reasoning}`;
+            break;
+        case 'task_delegation':
+            content = `Orchestratorが ${message.to_agents.join(', ')} にタスクを指示: ${message.instruction}`;
             break;
         case 'task_ledger_update':
             content = `Task Ledger更新: ${message.task_ledger.given_facts.length} 個の事実, ${message.task_ledger.task_plan.length} 個の計画ステップ`;
@@ -467,22 +491,21 @@ function addLogEntry(message) {
             content = `Progress Ledger更新: 完了=${message.progress_ledger.task_complete}, 次の担当者=${message.progress_ledger.next_speaker || 'なし'}`;
             break;
         case 'evaluation_start':
-            content = `Evaluatorが解答の検証を開始`;
-            break;
-        case 'round_complete':
-            content = `ラウンド ${message.round} 完了`;
+            content = 'Evaluatorが解答の検証を開始';
             break;
         case 'debate_end':
-            content = `協調推論終了 - 最終回答: ${message.final_answer}`;
+            content = `協調推論完了 - 最終回答: ${message.final_answer}`;
             break;
         case 'error':
             content = `エラー: ${message.message}`;
             break;
+        default:
+            content = JSON.stringify(message);
     }
     
     logEntry.innerHTML = `
         <div class="log-timestamp">${timestamp}</div>
-        <div>${content}</div>
+        <div class="log-content">${content}</div>
     `;
     
     debateLog.appendChild(logEntry);
